@@ -2,6 +2,8 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { Band } from "../components/Band";
 import { confetti } from "../components/confetti";
 import { Modal } from "../components/Modal";
+import { useAnimationFrame } from "../components/useAnimationFrame";
+import { useAutoCrop } from "../components/useAutoCrop";
 import { VideoErrorModal } from "../components/VideoErrorModal";
 import { useT } from "../i18n";
 import { routeVideo, unlockAudio, VideoMixer, type MixTrack, type VideoDuck } from "../lib/audio/engine";
@@ -26,6 +28,7 @@ export function Screening() {
   const [exporting, setExporting] = useState(false);
   const [videoError, setVideoError] = useState(false);
   const time = useCallback(() => video.current?.currentTime ?? 0, []);
+  useAutoCrop(video, game.scene.id, game.videoUrl);
   const hasOriginal = game.scene.lines.some((l) => l.clip && game.clips[l.clip]);
   const winners = snap?.winners ?? null;
   const counts = snap ? voteCounts(snap) : {};
@@ -86,8 +89,9 @@ export function Screening() {
     <div className="wrap stack">
       <h2>{t.screen.title}</h2>
       <div className="stage">
-        <video ref={video} src={game.videoUrl} playsInline controls preload="auto" onError={() => setVideoError(true)} />
+        <video ref={video} src={game.videoUrl} playsInline preload="auto" onError={() => setVideoError(true)} onClick={() => toggle(video.current)} />
       </div>
+      <PlayerBar video={video} />
       <div className="caption">
         {onScreen && <div className="cap" key={onScreen}><small>{t.common.onScreen}</small>{onScreen === "original" ? t.screen.originalLines : t.screen.ourDub}</div>}
       </div>
@@ -154,6 +158,37 @@ export function Screening() {
         />
       )}
       {videoError && <VideoErrorModal onClose={() => setVideoError(false)} />}
+    </div>
+  );
+}
+
+const toggle = (v: HTMLVideoElement | null) => { if (v) { if (v.paused) v.play().catch(() => {}); else v.pause(); } };
+
+/** Play/pause and a seek bar. The video is zoomed to cut black bars, which would push native controls off the stage. */
+function PlayerBar({ video }: { video: React.RefObject<HTMLVideoElement | null> }) {
+  const t = useT();
+  const range = useRef<HTMLInputElement>(null);
+  const clock = useRef<HTMLSpanElement>(null);
+  const [paused, setPaused] = useState(true);
+  const dragging = useRef(false);
+  useAnimationFrame(() => {
+    const v = video.current;
+    if (!v) return;
+    if (v.paused !== paused) setPaused(v.paused);
+    const d = isFinite(v.duration) ? v.duration : 0;
+    if (range.current && !dragging.current) { range.current.max = String(d || 1); range.current.value = String(v.currentTime); }
+    if (clock.current) clock.current.textContent = `${fmtTime(v.currentTime)} / ${fmtTime(d)}`;
+  });
+  return (
+    <div className="row player-bar">
+      <button className="small" aria-label={paused ? t.screen.watch : t.common.stop} onClick={() => toggle(video.current)}>{paused ? "▶" : "❚❚"}</button>
+      <input
+        ref={range} type="range" min={0} step={0.05} defaultValue={0} aria-label={t.caption.bandLabel} style={{ flex: 1 }}
+        onPointerDown={() => { dragging.current = true; }}
+        onPointerUp={() => { dragging.current = false; }}
+        onChange={(e) => { const v = video.current; if (v) try { v.currentTime = Number(e.target.value); } catch { /* not loaded yet */ } }}
+      />
+      <span ref={clock} className="muted fine" style={{ fontVariantNumeric: "tabular-nums" }} />
     </div>
   );
 }

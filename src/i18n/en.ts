@@ -188,8 +188,9 @@ export const en: Dict = {
     submit: "Submit",
     submitting: "Joining your lines…",
     noLines: "Your role has no lines in this scene. You can submit right away.",
-    hintLine: "Listen to how the character says the line, then record yours. The video starts a little before the line and stops right after it.",
+    hintLine: "Listen to how the character says the line, then record yours. The video starts a little before the line and stops right after it. You can skip a line with Next.",
     hintLineDone: "Listen back. Re-record if you don't like it, otherwise press Next.",
+    needOne: "Record at least one line",
     hintLastDone: "Listen back. Re-record if you don't like it, otherwise press Submit.",
   },
   caption: {
