@@ -160,6 +160,9 @@ const isScene = (v: unknown): v is Scene => {
   return !!sc && typeof sc === "object" && typeof sc.id === "string" && Array.isArray(sc.roles) && Array.isArray(sc.lines);
 };
 
+/** "Check your internet" plus the signalling error code, so a screenshot tells what actually failed. */
+const netError = (type: string) => `${t().online.errNetwork} (${type})`;
+
 function bumpTakes() {
   useRoom.setState((s) => ({ takesRev: s.takesRev + 1 }));
 }
@@ -209,7 +212,7 @@ export function createRoom(name: string, opts: { public?: boolean } = {}, attemp
   p.on("connection", (conn) => hostAccept(conn));
   p.on("error", (e) => {
     if (e.type === "unavailable-id" && attempt < 3) { createRoom(name, opts, attempt + 1); return; }
-    if (useRoom.getState().status !== "open") setRoom({ status: "error", error: t().online.errNetwork });
+    if (useRoom.getState().status !== "open") setRoom({ status: "error", error: netError(e.type) });
   });
   p.on("disconnected", () => { try { p.reconnect(); } catch { /* destroyed */ } });
 }
@@ -253,7 +256,7 @@ export function resumeRoom(attempt = 0) {
   p.on("error", (e) => {
     // The server frees the room's id a moment after the old tab is gone.
     if (e.type === "unavailable-id" && attempt < 20) { try { p.destroy(); } catch { /* gone */ } setTimeout(() => { if (peer === p) resumeRoom(attempt + 1); }, 3000); return; }
-    if (useRoom.getState().status !== "open") setRoom({ status: "error", error: t().online.errNetwork });
+    if (useRoom.getState().status !== "open") setRoom({ status: "error", error: netError(e.type) });
   });
   p.on("disconnected", () => { try { p.reconnect(); } catch { /* destroyed */ } });
 }
@@ -695,7 +698,7 @@ export function joinRoom(code: string, name: string) {
     }
     if (useRoom.getState().reconnecting) { retryLater(); return; }
     clearTimeout(timeout);
-    setRoom({ status: "error", error: e.type === "peer-unavailable" ? t().online.errNotFound : t().online.errNetwork });
+    setRoom({ status: "error", error: e.type === "peer-unavailable" ? t().online.errNotFound : netError(e.type) });
   });
 }
 
