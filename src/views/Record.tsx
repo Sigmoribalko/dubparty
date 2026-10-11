@@ -4,7 +4,8 @@ import { EffectPicker } from "../components/EffectPicker";
 import { MicMeter } from "../components/MicMeter";
 import { useAnimationFrame } from "../components/useAnimationFrame";
 import { VideoErrorModal } from "../components/VideoErrorModal";
-import { VoiceTrack } from "../components/VoiceTrack";
+import { LineTrack } from "../components/LineTrack";
+import { useAutoCrop } from "../components/useAutoCrop";
 import { characterEnvelope, ENV_RATE, recordingEnvelope, type Envelope } from "../lib/audio/envelope";
 import { useT } from "../i18n";
 import type { EffectId } from "../lib/audio/effects";
@@ -63,7 +64,8 @@ export function Record() {
   // Timeline length: the video's own duration once known, else what the lines cover.
   const [videoDuration, setVideoDuration] = useState(0);
   const duration = Math.max(videoDuration, game.scene.duration, ...game.scene.lines.map((l) => l.end + 1));
-  const [from, to] = line ? recordWindow(line, duration) : [0, 0];
+  const [from, to] = line ? recordWindow(line, duration, game.scene.lines) : [0, 0];
+  useAutoCrop(video, game.scene.id, game.videoUrl);
 
   // How loud the character speaks over time (measured once per scene and role).
   const [reference, setReference] = useState<Envelope | null>(null);
@@ -101,7 +103,7 @@ export function Record() {
       const tk = game.lineTakes[l.id];
       if (!tk) continue;
       const env = recordingEnvelope(tk.buffer, tk.offset, duration).values;
-      const [a, b] = recordWindow(l, duration);
+      const [a, b] = recordWindow(l, duration, game.scene.lines);
       for (let i = Math.floor(a * ENV_RATE); i < Math.min(values.length, Math.ceil(b * ENV_RATE)); i++) values[i] = Math.max(values[i], env[i]);
     }
     return { values };
@@ -257,10 +259,12 @@ export function Record() {
 
   const goTo = (i: number) => { if (!busy) setIdx(Math.max(0, Math.min(lines.length - 1, i))); };
 
-  /** Join every line into one voice track and send it. Each round is counted once on the account. */
+  /**
+   * Join the recorded lines into one voice track and send it (skipped lines stay silent).
+   * Each round is counted once on the account.
+   */
   const submit = async () => {
-    const missing = lines.findIndex((l) => !game.lineTakes[l.id]);
-    if (missing >= 0) { setIdx(missing); notify(t.record.lineOf(missing + 1, lines.length)); return; }
+    if (lines.length && !recordedCount) { notify(t.record.needOne); return; }
     if (phase === "listen") stopListening();
     setSubmitting(true);
     try {
@@ -268,7 +272,7 @@ export function Record() {
         if (!(await countDub(game.scene.title))) { notify(t.auth.limitReached); return; }
         game.dubCounted = true;
       }
-      const track = await composeLines(lines, game.lineTakes, duration);
+      const track = await composeLines(lines, game.lineTakes, duration, game.scene.lines);
       game.tracks[roleId] = track;
       game.effects[roleId] = effect;
       touch();
@@ -323,14 +327,16 @@ export function Record() {
       {line ? (
         <>
           <Caption lines={game.scene.lines} roles={game.scene.roles} focusRoleId={roleId} time={time} />
-          <VoiceTrack
+          <LineTrack
             reference={reference}
-            mine={recordedCount ? mine : null}
+            mine={take ? mine : null}
             live={liveLevels}
-            lines={lines}
+            line={line}
+            from={from}
+            to={to}
             color={role?.color ?? "#f2a516"}
             time={time}
-            labels={{ character: t.record.trackCharacter(role?.name ?? ""), you: t.record.trackYou, measuring: t.record.trackMeasuring }}
+            labels={{ character: role?.name ?? "", you: t.record.trackYou, measuring: t.record.trackMeasuring }}
           />
         </>
       ) : <p className="muted">{t.record.noLines}</p>}
@@ -354,9 +360,9 @@ export function Record() {
         <div className="spacer" />
         {submitting && <span className="muted fine">{t.record.submitting}</span>}
         {last ? (
-          <button className="primary" disabled={busy || submitting || (!!line && !take)} onClick={submit}>{t.record.submit}</button>
+          <button className="primary" disabled={busy || submitting} onClick={submit}>{t.record.submit}</button>
         ) : (
-          <button className="primary" disabled={busy || !take} onClick={() => goTo(idx + 1)}>{t.record.next}</button>
+          <button className={take ? "primary" : ""} disabled={busy} onClick={() => goTo(idx + 1)}>{t.record.next}</button>
         )}
       </div>
 

@@ -19,6 +19,11 @@ lobby (host picks/imports pack + scene, invites, everyone downloads) → host "�
 recording line by line ("Реплика N из M": listen original, record, listen back, re-record, Далее / ← Назад, last = Сдать)
 → waiting screen (who submitted, lines left for others) → everyone submitted → show autoplays → vote best voice
 (not yourself) → download video / host "К выбору сцены" / leave.
+- Each line is recorded inside `recordWindow()` (`src/lib/audio/compose.ts`): 0.8 s before, 0.5 s after, cut at the
+  neighbouring lines of any role. `LineTrack` shows that one line (hero's phrase, your voice drawn over it).
+  Lines can be skipped (Далее without a take); submit needs at least one take.
+- Videos with baked-in black bars are zoomed to fill the stage (`useAutoCrop`), so Screening has its own play/seek bar
+  instead of native controls. The saved video file is not cropped.
 - Line takes live in `game.lineTakes`; on submit `src/lib/audio/compose.ts` joins them into one WAV voice track, so
   networking/mixing/export still handle one recording per role. Progress is sent as `{t:"lines", n}`.
 

@@ -6,34 +6,43 @@ import type { Line, RecordedTrack } from "../types";
  * mixing, export) keeps dealing with a single recording per role.
  */
 
-/** Recording window around a line: some lead-in to catch the cue, a tail for late finishes. */
-export const REC_PRE = 1.5;
-export const REC_POST = 0.8;
-/** What is kept of each take on the final track. Neighbouring windows are split halfway. */
-const KEEP_PRE = 0.4;
-const KEEP_POST = 0.8;
+/** Recording window around a line: a short lead-in to catch the cue and a short tail for late finishes. */
+export const REC_PRE = 0.8;
+export const REC_POST = 0.5;
 const FADE = 0.02;
 const RATE = 24000;
 
-export function recordWindow(line: Line, duration: number): [number, number] {
-  return [Math.max(0, line.start - REC_PRE), Math.min(duration, line.end + REC_POST)];
+/**
+ * The stretch of video played while recording (and listening back to) one line. It stops at the
+ * neighbouring lines of any role, so you don't hear the previous line's end or the next one's start.
+ */
+export function recordWindow(line: Line, duration: number, all: Line[] = []): [number, number] {
+  let a = Math.max(0, line.start - REC_PRE);
+  let b = Math.min(duration, line.end + REC_POST);
+  for (const o of all) {
+    if (o.id === line.id) continue;
+    if (o.end <= line.start + 0.05) a = Math.max(a, Math.min(o.end, line.start));
+    if (o.start >= line.end - 0.05) b = Math.min(b, Math.max(o.start, line.end));
+  }
+  return [Math.max(0, a), Math.max(a + 0.1, b)];
 }
 
-/** Render this role's line takes (track time = video time + offset) into one voice track starting at 0. */
-export async function composeLines(lines: Line[], takes: Record<string, RecordedTrack>, duration: number): Promise<RecordedTrack> {
-  const sorted = [...lines].sort((a, b) => a.start - b.start);
+/**
+ * Render this role's line takes (track time = video time + offset) into one voice track starting at 0.
+ * `all` is every line of the scene: each take is kept exactly inside its recording window.
+ */
+export async function composeLines(lines: Line[], takes: Record<string, RecordedTrack>, duration: number, all: Line[] = lines): Promise<RecordedTrack> {
   const length = Math.max(1, Math.ceil((duration + 1) * RATE));
   const oc = new OfflineAudioContext(1, length, RATE);
-  sorted.forEach((l, i) => {
+  for (const l of lines) {
     const tk = takes[l.id];
-    if (!tk) return;
-    const prev = sorted[i - 1], next = sorted[i + 1];
-    let a = Math.max(0, l.start - KEEP_PRE, prev ? (prev.end + l.start) / 2 : 0);
-    const b = Math.min(duration + 1, l.end + KEEP_POST, next ? (l.end + next.start) / 2 : Infinity);
+    if (!tk) continue;
+    let [a, b] = recordWindow(l, duration, all);
     let from = a + tk.offset;
     if (from < 0) { a -= from; from = 0; }
+    b = Math.min(b, duration + 1);
     const dur = Math.min(b - a, tk.buffer.duration - from);
-    if (dur <= FADE * 2) return;
+    if (dur <= FADE * 2) continue;
     const src = oc.createBufferSource();
     src.buffer = tk.buffer;
     const g = oc.createGain();
@@ -43,7 +52,7 @@ export async function composeLines(lines: Line[], takes: Record<string, Recorded
     g.gain.linearRampToValueAtTime(0, a + dur);
     src.connect(g).connect(oc.destination);
     src.start(a, from, dur);
-  });
+  }
   const buffer = await oc.startRendering();
   return { blob: encodeWav(buffer), buffer, offset: 0 };
 }
