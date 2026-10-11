@@ -2,9 +2,10 @@ import { useEffect } from "react";
 import { t } from "../i18n";
 import { decodeBlob } from "../lib/audio/engine";
 import { store } from "../lib/store";
-import { roundTakes, useRoom, type Snapshot } from "../net/room";
+import { roundTakes, sendLineTake, useRoom, type Snapshot } from "../net/room";
 import { notify, useApp } from "./app";
-import { createGame, type Game } from "./game";
+import { createGame, effectOf, type Game } from "./game";
+import { forgetStaleTakes, restoreLineTakes } from "./takes";
 
 /** Build this device's game for a round: cast from the room's role picks. */
 async function buildOnlineGame(snap: Snapshot, myId: string): Promise<Game | null> {
@@ -17,7 +18,13 @@ async function buildOnlineGame(snap: Snapshot, myId: string): Promise<Game | nul
   const myRoleId = snap.players.find((p) => p.id === myId)?.roleId ?? null;
   const res = await createGame({ pack, scene, round: snap.round, cast, myRoleId });
   if (res?.warnings.length) notify(t().game.clipsUnreadable);
-  return res?.game ?? null;
+  const game = res?.game ?? null;
+  // Back in the same round after a closed tab: the lines recorded before are still here.
+  if (game?.myRoleId) {
+    const restored = await restoreLineTakes(game, snap.code).catch(() => ({}));
+    for (const [lineId, take] of Object.entries(restored)) sendLineTake(lineId, take, effectOf(game, game.myRoleId));
+  }
+  return game;
 }
 
 /** Copy recordings received from the room into the local game (decoding new ones). */
@@ -39,6 +46,7 @@ async function syncTakes(game: Game) {
 /** Keeps navigation and the local game in step with the room (mounted once in App). */
 export function useRoomDirector() {
   useEffect(() => {
+    forgetStaleTakes();
     let building = 0;
     const app = useApp.getState;
 
