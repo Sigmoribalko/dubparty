@@ -7,9 +7,11 @@ Live: https://dubparty.ru (GitHub Pages, repo Sigmoribalko/dubparty). Owner talk
 - Vite + React 19 + TypeScript + zustand. `npm run dev` (port 5173), `npm run build` → single-file `dist/index.html` (vite-plugin-singlefile).
 - Deploy: push to `main` → GitHub Actions `.github/workflows/pages.yml` builds and publishes. If the deploy step fails with
   "No artifacts named github-pages", just `gh run rerun <id>` (transient GitHub issue).
-- Custom domain dubparty.ru (reg.ru DNS: 4× A @ → 185.199.108–111.153, CNAME www → sigmoribalko.github.io). `public/CNAME`.
-  HTTPS certificate was still pending on 2026-10-09; when `gh api repos/Sigmoribalko/dubparty/pages --jq .https_certificate.state`
-  says approved, run `gh api -X PUT repos/Sigmoribalko/dubparty/pages -F https_enforced=true`.
+- Custom domain dubparty.ru (4× A @ → 185.199.108–111.153, CNAME www → sigmoribalko.github.io). `public/CNAME`.
+  DNS is hosted on Cloudflare (autumn/rocco.ns.cloudflare.com, all records "DNS only"; domain stays registered at reg.ru):
+  GitHub could not read the zone from reg.ru's nameservers, so no certificate was issued until the move (2026-10-10).
+  HTTPS is enforced since 2026-10-11. New DNS records go in Cloudflare, not reg.ru. Resend records live there too
+  (`send.mail`, `rsend.mail` CNAMEs, `resend._domainkey.mail` TXT).
 
 ## Game flow (owner's spec)
 lobby (host picks/imports pack + scene, invites, everyone downloads) → host "Начать: выбор ролей" → casting (pick role,
