@@ -32,6 +32,11 @@ recording line by line ("Реплика N из M": listen original, record, list
   player who comes back with the same key gets their seat, role and votes back (only if that seat is offline).
 - Before the game a dropped seat is held 60 s, during the game it stays (offline). The show auto-starts only when
   every cast player submitted; if someone dropped without submitting the host can start it anyway.
+- A recorded line is never only in the tab: `src/state/takes.ts` writes it to this browser's storage (IndexedDB blob +
+  localStorage index `dubl-line-takes`, one round at a time) and `sendLineTake()` hands it to the host (`kind: "line"`).
+  Back in the same round after a reload, the lines are restored and recording continues from the first missing one.
+  If the host starts the show without someone (`hostToScreening` → `hostUsePartials`), their handed-over lines are
+  joined into a voice track like a normal submission; lines they didn't record stay silent.
 - Guests auto-reconnect to the host for 90 s ("Переподключаюсь…" banner) and resend their own take on return.
 - The host's room is saved in localStorage (`dubl-hosted`, own take blob in IndexedDB) for 20 min; Home offers
   "Вернуться в комнату" and `resumeRoom()` reopens the same room id. Leaving on purpose sends `bye` to guests.

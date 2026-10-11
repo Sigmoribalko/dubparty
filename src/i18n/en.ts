@@ -360,7 +360,7 @@ export const en: Dict = {
     needAllRoles: "Waiting for everyone to pick a role",
     reconnecting: "Lost the connection to the room. Reconnecting…",
     dropped: (names: string) => `${names}: no connection. Waiting for them to come back.`,
-    droppedHost: "You can wait or start the show without them.",
+    droppedHost: "You can wait or start the show: the lines they managed to record will be in the dub.",
     resumeHost: (code: string) => `You were hosting room ${code}. Your friends are waiting: go back and the game goes on.`,
     resumeGuest: (code: string) => `You were in room ${code}.`,
     resume: "Back to the room",

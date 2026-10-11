@@ -14,9 +14,10 @@ import { decodeBlob, routeVideo, unlockAudio, VideoMixer, type MixTrack, type Vi
 import { getMic, hasMic, micRms, pickMime, setMonitor } from "../lib/audio/mic";
 import { sleep } from "../lib/util";
 import { countDub, dubLimitReached } from "../lib/auth/auth";
-import { reportLines, submitTake, useRoom } from "../net/room";
+import { reportLines, sendLineEffect, sendLineTake, submitTake, useRoom } from "../net/room";
 import { notify, useApp, useGame } from "../state/app";
 import { effectOf, mixFor, myLines, originalDuck, originalMix, videoDuck } from "../state/game";
+import { keepEffect, keepLineTake, type TakeContext } from "../state/takes";
 import { Caption } from "./Caption";
 import { RecordingWait } from "./Online";
 
@@ -51,7 +52,10 @@ export function Record() {
   const roleId = game.myRoleId!;
   const role = game.scene.roles.find((r) => r.id === roleId);
   const lines = useMemo(() => myLines(game), [game]);
-  const [idx, setIdx] = useState(() => Math.max(0, lines.findIndex((l) => !game.lineTakes[l.id])));
+  // Start at the first line that isn't recorded yet (lines recorded before a reload are kept).
+  const [idx, setIdx] = useState(() => { const i = lines.findIndex((l) => !game.lineTakes[l.id]); return i < 0 ? Math.max(0, lines.length - 1) : i; });
+  /** Where this part's takes are kept so they survive a closed tab. */
+  const keepIn: TakeContext | null = snap ? { room: snap.code, round: game.round, sceneId: game.scene.id, roleId } : null;
   const line = lines[idx];
   const take = line ? game.lineTakes[line.id] : undefined;
   const effect = effectOf(game, roleId);
@@ -235,8 +239,12 @@ export function Record() {
     const blob = new Blob(chunks, { type: rec.mimeType || mime || "audio/webm" });
     try {
       // Track time = video time + offset; the video started at `start`, (t1 - t0) after the recorder.
-      game.lineTakes[lineId] = { blob, buffer: await decodeBlob(blob), offset: (t1 - t0) / 1000 - start };
+      const lineTake = { blob, buffer: await decodeBlob(blob), offset: (t1 - t0) / 1000 - start };
+      game.lineTakes[lineId] = lineTake;
       touch();
+      // Safe from here on: kept in this browser and handed to the host, whatever happens to the tab or the connection.
+      if (keepIn) keepLineTake(keepIn, lineId, lineTake).catch(() => {});
+      sendLineTake(lineId, lineTake, effectOf(game, roleId));
     } catch {
       notify(t.record.unreadable);
     }
@@ -253,6 +261,8 @@ export function Record() {
   const chooseEffect = (id: EffectId) => {
     game.effects[roleId] = id;
     touch();
+    if (keepIn) keepEffect(keepIn, id).catch(() => {});
+    sendLineEffect(id);
     // Re-style what is playing right now.
     if (phase === "listen" && listening === "mine") listenMine();
   };

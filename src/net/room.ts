@@ -1,10 +1,12 @@
 import Peer, { type DataConnection } from "peerjs";
 import { create } from "zustand";
 import { t } from "../i18n";
+import { composeLines } from "../lib/audio/compose";
 import { EFFECTS, type EffectId } from "../lib/audio/effects";
+import { decodeBlob } from "../lib/audio/engine";
 import { sceneMediaKeys, store } from "../lib/store";
 import { playableRoles } from "../state/game";
-import type { Pack, Scene } from "../lib/types";
+import type { Pack, RecordedTrack, Scene } from "../lib/types";
 import { Link, type FileMeta, type Json } from "./link";
 
 /*
@@ -365,18 +367,69 @@ function fillFreeRoles(s: Snapshot) {
 /** A voice track is audio of scene length; anything bigger is not a recording. */
 const MAX_TAKE = 64 * 1024 * 1024;
 
+/** One line is a few seconds of compressed audio. */
+const MAX_LINE = 4 * 1024 * 1024;
+
+/**
+ * Host side: lines players have recorded but not submitted yet (roleId → lineId → take). Every
+ * line is sent here the moment it's recorded, so a player who closes the tab or loses the
+ * connection still has their voice in the show.
+ */
+const partials = new Map<string, { effect: EffectId; lines: Map<string, { blob: Blob; offset: number }> }>();
+
 function hostHandleFile(link: Link, meta: FileMeta, blob: Blob) {
   const snap = useRoom.getState().snap;
-  if (meta.kind !== "take" || blob.size > MAX_TAKE || !snap || (snap.phase !== "recording" && snap.phase !== "screening") || meta.round !== snap.round || guests.get(link.peer) !== link) return;
+  if (!snap || meta.round !== snap.round || guests.get(link.peer) !== link) return;
   // A player can only send the part they were cast in, not overwrite someone else's.
   const roleId = String(meta.roleId);
   if (snap.players.find((p) => p.id === link.peer)?.roleId !== roleId) return;
+  if (meta.kind === "line") {
+    const lineId = String(meta.lineId);
+    if (snap.phase !== "recording" || blob.size > MAX_LINE || !snap.scene?.lines.some((l) => l.id === lineId && l.roleId === roleId)) return;
+    const mine = partials.get(roleId) ?? { effect: "none" as EffectId, lines: new Map() };
+    let total = blob.size;
+    mine.lines.forEach((tk, id) => { if (id !== lineId) total += tk.blob.size; });
+    if (total > MAX_TAKE) return;
+    mine.lines.set(lineId, { blob, offset: asOffset(meta.offset) });
+    mine.effect = asEffect(meta.effect);
+    partials.set(roleId, mine);
+    return;
+  }
+  if (meta.kind !== "take" || blob.size > MAX_TAKE || (snap.phase !== "recording" && snap.phase !== "screening")) return;
   const take: RoundTake = { roleId, blob, offset: asOffset(meta.offset), effect: asEffect(meta.effect) };
   hostAcceptTake(link.peer, take);
 }
 
+/**
+ * The show is starting without waiting for everyone: whoever hasn't submitted still gets the
+ * lines they did record, joined into a voice track like a normal submission.
+ */
+async function hostUsePartials() {
+  const snap = useRoom.getState().snap;
+  if (!snap?.scene || snap.phase !== "recording") return;
+  const scene = snap.scene;
+  const duration = Math.max(scene.duration || 0, ...scene.lines.map((l) => l.end + 1));
+  for (const [roleId, part] of partials) {
+    if (roundTakes.has(roleId) || !part.lines.size || !snap.players.some((p) => p.roleId === roleId)) continue;
+    try {
+      const takes: Record<string, RecordedTrack> = {};
+      for (const [lineId, tk] of part.lines) {
+        try { takes[lineId] = { blob: tk.blob, buffer: await decodeBlob(tk.blob), offset: tk.offset }; } catch { /* unreadable line: skipped */ }
+      }
+      if (!Object.keys(takes).length) continue;
+      const track = await composeLines(scene.lines.filter((l) => l.roleId === roleId), takes, duration, scene.lines);
+      const take: RoundTake = { roleId, blob: track.blob, offset: track.offset, effect: part.effect };
+      roundTakes.set(roleId, take);
+      const round = snap.round;
+      guests.forEach((g) => sendTake(g, take, round));
+    } catch { /* that voice stays silent */ }
+  }
+  bumpTakes();
+}
+
 function hostAcceptTake(playerId: string, take: RoundTake) {
   const snap = useRoom.getState().snap!;
+  partials.delete(take.roleId); // the full take replaces the lines handed over one by one
   if (playerId === useRoom.getState().myId) {
     store.putMedia(HOST_TAKE, take.blob);
     const h = readJson<Hosted>(HOSTED_STORE);
@@ -457,6 +510,13 @@ function applyAction(playerId: string, msg: Json) {
         p.linesDone = Math.max(0, Math.min(total, Math.floor(Number(msg.n) || 0)));
       }, true);
       break;
+    case "line-effect": {
+      // The effect for lines handed over but not submitted yet.
+      const roleId = useRoom.getState().snap?.players.find((p) => p.id === playerId)?.roleId;
+      const part = roleId ? partials.get(roleId) : undefined;
+      if (part) part.effect = asEffect(msg.effect);
+      break;
+    }
     case "effect": {
       // Only the voice's owner picks its effect.
       const owner = useRoom.getState().snap?.players.find((p) => p.id === playerId);
@@ -578,6 +638,7 @@ export function hostStart() {
   const cur = useRoom.getState().snap;
   if (!cur || cur.phase !== "casting" || !everyoneCast(cur)) return;
   roundTakes.clear();
+  partials.clear();
   bumpTakes();
   hostUpdate((s) => {
     s.phase = "recording";
@@ -595,8 +656,12 @@ export const everyoneCast = (s: Snapshot) =>
 /** Players still missing for every role to be taken. */
 export const playersNeeded = (s: Snapshot) => Math.max(0, capacityOf(s) - onlinePlayers(s).length);
 
-export const hostToScreening = () => hostUpdate((s) => { s.phase = "screening"; });
+export async function hostToScreening() {
+  await hostUsePartials();
+  hostUpdate((s) => { s.phase = "screening"; });
+}
 export const hostToLobby = () => hostUpdate((s) => {
+  partials.clear();
   s.phase = "lobby";
   s.votes = {};
   s.winners = null;
@@ -709,14 +774,16 @@ function guestHandle(msg: Json) {
       if (!snap) break;
       const st = useRoom.getState();
       const prev = st.snap;
-      if (prev && snap.round !== prev.round) { roundTakes.clear(); bumpTakes(); }
+      if (prev && snap.round !== prev.round) { roundTakes.clear(); myLines.clear(); bumpTakes(); }
       setRoom({ status: "open", reconnecting: false, snap });
       rememberRoom(false);
-      // Back after a drop: the host may have restarted and lost my recording, so send it again.
+      // Back after a drop: the host may have restarted and lost my recording, so send it again
+      // (the whole take if I had submitted, otherwise the lines recorded so far).
       if (st.reconnecting && (snap.phase === "recording" || snap.phase === "screening")) {
         const me = snap.players.find((p) => p.id === st.myId);
         const mine = me?.roleId ? roundTakes.get(me.roleId) : undefined;
         if (mine) hostLink?.sendFile({ kind: "take", round: snap.round, roleId: mine.roleId, offset: mine.offset, effect: mine.effect }, mine.blob);
+        else [...myLines.keys()].forEach(uploadLine);
       }
       break;
     }
@@ -830,6 +897,34 @@ export const vote = (roleId: string) => request({ t: "vote", roleId });
 /** How many of my lines are recorded, so others see how far along I am. */
 export const reportLines = (n: number) => request({ t: "lines", n });
 
+/** Guest side: this device's line takes of the round, kept so they can be sent again after a reconnect. */
+const myLines = new Map<string, { blob: Blob; offset: number; effect: EffectId }>();
+
+function uploadLine(lineId: string) {
+  const s = useRoom.getState();
+  const tk = myLines.get(lineId);
+  const roleId = s.snap?.players.find((p) => p.id === s.myId)?.roleId;
+  if (!tk || !roleId || !s.snap || s.snap.phase !== "recording") return;
+  hostLink?.sendFile({ kind: "line", round: s.snap.round, roleId, lineId, offset: tk.offset, effect: tk.effect }, tk.blob);
+}
+
+/**
+ * Hand a freshly recorded line to the host right away (the host's own lines stay on the host).
+ * If this player drops before submitting, the show still has what they recorded.
+ */
+export function sendLineTake(lineId: string, take: { blob: Blob; offset: number }, effect: EffectId) {
+  if (useRoom.getState().isHost) return;
+  myLines.set(lineId, { blob: take.blob, offset: take.offset, effect });
+  uploadLine(lineId);
+}
+
+/** The voice effect changed after some lines were already handed to the host. */
+export function sendLineEffect(effect: EffectId) {
+  if (useRoom.getState().isHost || !myLines.size) return;
+  myLines.forEach((tk) => { tk.effect = effect; });
+  hostLink?.send({ t: "line-effect", effect });
+}
+
 export function submitTake(take: RoundTake) {
   const s = useRoom.getState();
   if (!s.snap) return;
@@ -858,6 +953,8 @@ export function leaveRoom() {
   hostLink = null;
   download = null;
   roundTakes.clear();
+  partials.clear();
+  myLines.clear();
   try { peer?.destroy(); } catch { /* already gone */ }
   peer = null;
   setRoom({ status: "idle", reconnecting: false, error: null, isHost: false, myId: "", snap: null });
