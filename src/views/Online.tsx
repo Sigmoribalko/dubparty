@@ -4,12 +4,13 @@ import { unlockAudio } from "../lib/audio/engine";
 import { store } from "../lib/store";
 import type { Pack } from "../lib/types";
 import {
-  capacityOf, createRoom, everyoneCast, hostCast, hostKick, hostSelectScene, hostSetPublic, hostStart, hostToLobby, hostToScreening, inviteLink, joinRoom,
+  capacityOf, createRoom, everyoneCast, hostCast, hostKick, hostSelectScene, hostUnban, hostSetPublic, hostStart, hostToLobby, hostToScreening, inviteLink, joinRoom,
   leaveRoom, normalizeCode, onlinePlayers, pickRole, playersNeeded, randomizeRoles, useRoom, type Player, type Snapshot,
 } from "../net/room";
 import { playableRoles } from "../state/game";
 import { FileButton } from "../components/FileButton";
 import { Menu } from "../components/Menu";
+import { Modal } from "../components/Modal";
 import { importFiles } from "../lib/pack/import";
 import { findRooms, joinable, type FoundRoom } from "../net/finder";
 import { displayName, useAuth } from "../lib/auth/auth";
@@ -249,6 +250,7 @@ function Lobby({ snap }: { snap: Snapshot }) {
           <ul className="players">
             {snap.players.map((p) => <PlayerRow key={p.id} p={p} snap={snap} me={p.id === myId} />)}
           </ul>
+          <BanList />
         </section>
       </div>
 
@@ -343,6 +345,7 @@ function Casting({ snap }: { snap: Snapshot }) {
         <ul className="players">
           {snap.players.map((p) => <PlayerRow key={p.id} p={p} snap={snap} me={p.id === myId} />)}
         </ul>
+        <BanList />
       </section>
 
       <div className="row">
@@ -389,6 +392,34 @@ function KickMenu({ p }: { p: Player }) {
       <button role="menuitem" className="menu-item" onClick={() => { if (confirm(t.online.kickConfirm(p.name))) hostKick(p.id); }}>{t.online.kick}</button>
       <button role="menuitem" className="menu-item danger" onClick={() => { if (confirm(t.online.banConfirm(p.name))) hostKick(p.id, true); }}>{t.online.ban}</button>
     </Menu>
+  );
+}
+
+/** Host only: who is banned from this room, with a way back in for each. Shown once somebody is banned. */
+function BanList() {
+  const t = useT();
+  const isHost = useRoom((s) => s.isHost);
+  const bans = useRoom((s) => s.bans);
+  const [open, setOpen] = useState(false);
+  if (!isHost || !bans.length) return null;
+  return (
+    <>
+      <button className="small ghost" style={{ justifySelf: "start" }} onClick={() => setOpen(true)}>{t.online.bannedCount(bans.length)}</button>
+      {open && (
+        <Modal title={t.online.bannedTitle} onClose={() => setOpen(false)} actions={<><div className="spacer" /><button onClick={() => setOpen(false)}>{t.common.close}</button></>}>
+          <p className="muted fine">{t.online.bannedHint}</p>
+          <ul className="players">
+            {bans.map((b) => (
+              <li className="player" key={b.id}>
+                <span className="avatar" aria-hidden="true">{b.name.slice(0, 1).toUpperCase()}</span>
+                <span className="player-name">{b.name || t.online.guest}</span>
+                <button className="small" onClick={() => { hostUnban(b.id); notify(t.online.unbanned(b.name || t.online.guest)); }}>{t.online.unban}</button>
+              </li>
+            ))}
+          </ul>
+        </Modal>
+      )}
+    </>
   );
 }
 
@@ -495,6 +526,7 @@ export function RecordingWait({ snap }: { snap: Snapshot }) {
             );
           })}
         </ul>
+        <BanList />
       </section>
       {dropped.length > 0 && (
         <p className="notice panel">{t.online.dropped(dropped.map((p) => p.name).join(", "))}{isHost ? " " + t.online.droppedHost : ""}</p>

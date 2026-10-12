@@ -7,6 +7,7 @@ import { decodeBlob } from "../lib/audio/engine";
 import { sceneMediaKeys, store } from "../lib/store";
 import { playableRoles } from "../state/game";
 import type { Pack, RecordedTrack, Scene } from "../lib/types";
+import { uid } from "../lib/util";
 import { Link, type FileMeta, type Json } from "./link";
 
 /*
@@ -67,9 +68,13 @@ interface RoomState {
   snap: Snapshot | null;
   /** Bumped whenever recordings for the round arrive or change. */
   takesRev: number;
+  /** Host only: players banned from this room (never sent to guests). */
+  bans: Ban[];
 }
 
-export const useRoom = create<RoomState>(() => ({ status: "idle", reconnecting: false, error: null, isHost: false, myId: "", snap: null, takesRev: 0 }));
+export interface Ban { id: string; name: string }
+
+export const useRoom = create<RoomState>(() => ({ status: "idle", reconnecting: false, error: null, isHost: false, myId: "", snap: null, takesRev: 0, bans: [] }));
 const setRoom = (patch: Partial<RoomState>) => useRoom.setState(patch);
 
 /* ---------- shared module state ---------- */
@@ -79,9 +84,10 @@ const guests = new Map<string, Link>(); // host side
 let hostLink: Link | null = null; // guest side
 /** Host side: a player's secret key → their current peer id, so someone who drops can take their seat back. */
 let keys = new Map<string, string>();
-/** Host side: each connected player's key, and the keys the host has banned from this room. */
+/** Host side: each connected player's key, and the keys the host has banned from this room (with the name they had). */
 const keyOf = new Map<string, string>();
-let banned = new Set<string>();
+let banned = new Map<string, Ban>();
+const publishBans = () => useRoom.setState({ bans: [...banned.values()] });
 
 /* ---------- surviving a closed tab ---------- */
 
@@ -109,14 +115,14 @@ const readJson = <T,>(key: string): T | null => { try { return JSON.parse(localS
 const writeJson = (key: string, v: unknown) => { try { localStorage.setItem(key, JSON.stringify(v)); } catch { /* private mode / full */ } };
 const forget = (key: string) => { try { localStorage.removeItem(key); } catch { /* private mode */ } };
 
-interface Hosted { v: 1; savedAt: number; snap: Snapshot; keys: Array<[string, string]>; banned?: string[]; wantPublic: boolean; ownTake?: { roleId: string; offset: number; effect: EffectId; round: number } }
+interface Hosted { v: 1; savedAt: number; snap: Snapshot; keys: Array<[string, string]>; banned?: Array<[string, string]>; wantPublic: boolean; ownTake?: { roleId: string; offset: number; effect: EffectId; round: number } }
 interface LastRoom { code: string; host: boolean; at: number; name: string; scene?: string }
 
 function saveHosted() {
   const st = useRoom.getState();
   if (!st.isHost || !st.snap || st.status !== "open") return;
   const prev = readJson<Hosted>(HOSTED_STORE);
-  writeJson(HOSTED_STORE, { v: 1, savedAt: Date.now(), snap: st.snap, keys: [...keys], banned: [...banned], wantPublic, ownTake: prev?.snap.code === st.snap.code ? prev.ownTake : undefined } satisfies Hosted);
+  writeJson(HOSTED_STORE, { v: 1, savedAt: Date.now(), snap: st.snap, keys: [...keys], banned: [...banned].map(([key, b]) => [key, b.name]), wantPublic, ownTake: prev?.snap.code === st.snap.code ? prev.ownTake : undefined } satisfies Hosted);
   rememberRoom(true);
 }
 function rememberRoom(host: boolean) {
@@ -239,7 +245,7 @@ export function resumeRoom(attempt = 0) {
   peer = p;
   p.on("open", async (id) => {
     keys = new Map(saved.keys);
-    banned = new Set(Array.isArray(saved.banned) ? saved.banned.map(String) : []);
+    banned = new Map((Array.isArray(saved.banned) ? saved.banned : []).filter(Array.isArray).map(([key, name]) => [String(key), { id: uid(), name: String(name ?? "") }]));
     keyOf.clear();
     wantPublic = saved.wantPublic;
     const snap = structuredClone(saved.snap);
@@ -256,6 +262,7 @@ export function resumeRoom(attempt = 0) {
     });
     if (snap.phase === "lobby" || snap.phase === "casting") snap.players = snap.players.filter((pl) => pl.host);
     setRoom({ status: "open", myId: id, snap });
+    publishBans();
     bumpTakes();
     if (snap.public) startBeacon();
   });
@@ -266,6 +273,14 @@ export function resumeRoom(attempt = 0) {
     if (useRoom.getState().status !== "open") setRoom({ status: "error", error: netError(e.type) });
   });
   p.on("disconnected", () => { try { p.reconnect(); } catch { /* destroyed */ } });
+}
+
+/** Let a banned player back in: they can join again with the code. */
+export function hostUnban(banId: string) {
+  if (!useRoom.getState().isHost) return;
+  for (const [key, b] of banned) if (b.id === banId) banned.delete(key);
+  publishBans();
+  saveHosted();
 }
 
 function hostAccept(conn: DataConnection) {
@@ -366,7 +381,10 @@ export function hostKick(playerId: string, ban = false) {
   const st = useRoom.getState();
   if (!st.isHost || !st.snap || playerId === st.myId) return;
   const key = keyOf.get(playerId) ?? [...keys].find(([, id]) => id === playerId)?.[0];
-  if (ban && key) banned.add(key);
+  if (ban && key) {
+    banned.set(key, { id: uid(), name: st.snap.players.find((p) => p.id === playerId)?.name ?? "" });
+    publishBans();
+  }
   // A ban covers every tab that browser has open here.
   const out = new Set([playerId]);
   if (ban && key) keyOf.forEach((k, id) => { if (k === key) out.add(id); });
@@ -993,7 +1011,7 @@ export function leaveRoom() {
   setTimeout(() => closing.forEach((g) => g.close()), 300);
   keys = new Map();
   keyOf.clear();
-  banned = new Set();
+  banned = new Map();
   guests.clear();
   hostLink?.close();
   hostLink = null;
@@ -1003,7 +1021,7 @@ export function leaveRoom() {
   myLines.clear();
   try { peer?.destroy(); } catch { /* already gone */ }
   peer = null;
-  setRoom({ status: "idle", reconnecting: false, error: null, isHost: false, myId: "", snap: null });
+  setRoom({ status: "idle", reconnecting: false, error: null, isHost: false, myId: "", snap: null, bans: [] });
 }
 
 export function inviteLink(code: string) {

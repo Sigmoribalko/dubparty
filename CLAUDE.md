@@ -41,6 +41,8 @@ recording line by line ("Реплика N из M": listen original, record, list
   removed now, may rejoin with the code. Ban = the player's key is refused for this room (saved with the hosted room,
   never sent to guests); it is per browser, so a cleared browser or another device gets around it. `hello` without a
   key is refused. What a removed player already submitted stays in the round; unsubmitted lines are dropped.
+  Banned players (name kept with the key) are host-only state `useRoom().bans`; the host opens "Забаненные · N"
+  under the player list and can unban (`hostUnban`).
 - Guests auto-reconnect to the host for 90 s ("Переподключаюсь…" banner) and resend their own take on return.
 - The host's room is saved in localStorage (`dubl-hosted`, own take blob in IndexedDB) for 20 min; Home offers
   "Вернуться в комнату" and `resumeRoom()` reopens the same room id. Leaving on purpose sends `bye` to guests.
