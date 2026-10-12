@@ -48,6 +48,8 @@ export function Record() {
   const [videoError, setVideoError] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [listening, setListening] = useState<"mine" | "original">("original");
+  /** Tutorial only: what the player has already listened to on each line, to point at the next step. */
+  const [heard, setHeard] = useState<Record<string, { orig?: boolean; mine?: boolean }>>({});
 
   const roleId = game.myRoleId!;
   const role = game.scene.roles.find((r) => r.id === roleId);
@@ -162,8 +164,9 @@ export function Record() {
     setPhase("listen");
     v.play().catch(() => setPhase("idle"));
   };
-  const listenOriginal = () => playSegment(originalMix(game), originalDuck(game), "original");
-  const listenMine = () => playSegment(lineMix(), videoDuck(game, roleId), "mine");
+  const mark = (what: "orig" | "mine", on = true) => { if (line) setHeard((h) => ({ ...h, [line.id]: { ...h[line.id], [what]: on } })); };
+  const listenOriginal = () => { mark("orig"); return playSegment(originalMix(game), originalDuck(game), "original"); };
+  const listenMine = () => { mark("mine"); return playSegment(lineMix(), videoDuck(game, roleId), "mine"); };
   function stopListening() {
     dropMixer();
     segmentEnd.current = null;
@@ -174,7 +177,7 @@ export function Record() {
   const record = async () => {
     const v = video.current;
     if (!v || busy || !line) return;
-    if (dubLimitReached()) { notify(t.auth.limitReached); return; }
+    if (!game.solo && dubLimitReached()) { notify(t.auth.limitReached); return; }
     await unlockAudio();
     let stream: MediaStream;
     try { stream = await getMic(); setMicReady(true); }
@@ -241,6 +244,7 @@ export function Record() {
       // Track time = video time + offset; the video started at `start`, (t1 - t0) after the recorder.
       const lineTake = { blob, buffer: await decodeBlob(blob), offset: (t1 - t0) / 1000 - start };
       game.lineTakes[lineId] = lineTake;
+      setHeard((h) => ({ ...h, [lineId]: { ...h[lineId], mine: false } }));
       touch();
       // Safe from here on: kept in this browser and handed to the host, whatever happens to the tab or the connection.
       if (keepIn) keepLineTake(keepIn, lineId, lineTake).catch(() => {});
@@ -278,6 +282,14 @@ export function Record() {
     if (phase === "listen") stopListening();
     setSubmitting(true);
     try {
+      if (game.solo) {
+        // Practice: nothing is sent or counted, straight to the result.
+        game.tracks[roleId] = await composeLines(lines, game.lineTakes, duration, game.scene.lines);
+        game.effects[roleId] = effect;
+        touch();
+        useApp.getState().go({ name: "screen" });
+        return;
+      }
       if (!game.dubCounted) {
         if (!(await countDub(game.scene.title))) { notify(t.auth.limitReached); return; }
         game.dubCounted = true;
@@ -313,6 +325,10 @@ export function Record() {
 
   const myName = game.cast[roleId];
   const playingWhat = phase === "listen" ? listening : null;
+  // Tutorial: one hint at a time, and the button it's about is highlighted.
+  const seen = line ? heard[line.id] ?? {} : {};
+  const coach = !game.solo || !line ? null : busy ? "speak" : !take ? (seen.orig ? "rec" : "orig") : !seen.mine ? "mine" : last ? "submit" : "next";
+  const aim = (step: typeof coach) => (coach === step ? " coach-aim" : "");
 
   return (
     <div className="wrap stack">
@@ -353,13 +369,14 @@ export function Record() {
 
       {line && (
         <div className="row rec-controls">
+          {coach && <p className="coach" role="status" key={coach}>{t.tutorial.steps[coach]}</p>}
           {phase === "count" && <button className="small" onClick={stop}>{t.common.cancel}</button>}
           {phase === "rec" && <button className="rec" onClick={stop}>{t.record.stopRec}</button>}
           {!busy && (
             <>
-              {playingWhat === "original" ? <button onClick={stopListening}>{t.common.stop}</button> : <button onClick={listenOriginal}>{t.record.listenOriginal}</button>}
-              {take && (playingWhat === "mine" ? <button onClick={stopListening}>{t.common.stop}</button> : <button onClick={listenMine}>{t.record.listen}</button>)}
-              <button className={take ? "" : "rec"} onClick={() => { if (phase === "listen") stopListening(); record(); }}>{take ? t.record.rerecord : t.record.rec}</button>
+              {playingWhat === "original" ? <button onClick={stopListening}>{t.common.stop}</button> : <button className={aim("orig").trim()} onClick={listenOriginal}>{t.record.listenOriginal}</button>}
+              {take && (playingWhat === "mine" ? <button onClick={stopListening}>{t.common.stop}</button> : <button className={aim("mine").trim()} onClick={listenMine}>{t.record.listen}</button>)}
+              <button className={(take ? "" : "rec") + aim("rec")} onClick={() => { if (phase === "listen") stopListening(); record(); }}>{take ? t.record.rerecord : t.record.rec}</button>
             </>
           )}
         </div>
@@ -370,14 +387,14 @@ export function Record() {
         <div className="spacer" />
         {submitting && <span className="muted fine">{t.record.submitting}</span>}
         {last ? (
-          <button className="primary" disabled={busy || submitting} onClick={submit}>{t.record.submit}</button>
+          <button className={"primary" + aim("submit")} disabled={busy || submitting} onClick={submit}>{t.record.submit}</button>
         ) : (
-          <button className={take ? "primary" : ""} disabled={busy} onClick={() => goTo(idx + 1)}>{t.record.next}</button>
+          <button className={(take ? "primary" : "") + aim("next")} disabled={busy} onClick={() => goTo(idx + 1)}>{t.record.next}</button>
         )}
       </div>
 
       {micReady && <MicMeter />}
-      {line && (
+      {line && !game.solo && (
         <p className="muted fine">
           {take ? (last ? t.record.hintLastDone : t.record.hintLineDone) : t.record.hintLine}
           {!take && <span className="desktop-only"> {t.record.spaceHint}</span>}

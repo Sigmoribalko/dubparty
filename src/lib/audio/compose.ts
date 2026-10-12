@@ -58,7 +58,7 @@ export async function composeLines(lines: Line[], takes: Record<string, Recorded
 }
 
 /** 16-bit PCM mono WAV. */
-function encodeWav(buf: AudioBuffer): Blob {
+export function encodeWav(buf: AudioBuffer): Blob {
   const data = buf.getChannelData(0);
   const out = new DataView(new ArrayBuffer(44 + data.length * 2));
   const str = (o: number, s: string) => { for (let i = 0; i < s.length; i++) out.setUint8(o + i, s.charCodeAt(i)); };

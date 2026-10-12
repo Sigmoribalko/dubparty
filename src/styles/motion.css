@@ -20,6 +20,17 @@
 @keyframes rise { from { opacity: 0; transform: translateY(12px); } }
 @keyframes fresh { 0% { background: color-mix(in srgb, var(--accent) 22%, transparent); } 100% { background: transparent; } }
 
+@keyframes floatA { 0%, 100% { transform: translateY(0) rotate(-1.4deg); } 50% { transform: translateY(-13px) rotate(1.1deg); } }
+@keyframes floatB { 0%, 100% { transform: translateY(-9px) rotate(1.6deg); } 50% { transform: translateY(7px) rotate(-1deg); } }
+@keyframes drift { from { transform: translate(0, 0) rotate(-4deg); } to { transform: translate(16px, -20px) rotate(5deg); } }
+@keyframes mascotBob { 50% { transform: translateY(-8px); } }
+@keyframes mascotBlink { 0%, 92%, 100% { transform: scaleY(1); } 96% { transform: scaleY(0.1); } }
+@keyframes mascotTalk { 0%, 100% { height: 6%; top: 67%; } 50% { height: 24%; top: 61%; } }
+@keyframes aimPulse {
+  0%, 100% { box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 80%, transparent); }
+  50% { box-shadow: 0 0 0 10px color-mix(in srgb, var(--accent) 0%, transparent); }
+}
+
 @media (prefers-reduced-motion: reduce) {
   .tally::before, .spinner { animation: none; }
 }
@@ -52,4 +63,19 @@
   .hero > :nth-child(3) { animation-delay: 0.16s; }
   .hero > :nth-child(4) { animation-delay: 0.24s; }
   .seg label { transition: border-color 0.25s, background-color 0.25s; }
+  .welcome > * { animation: rise 0.7s var(--ease-out) both; }
+  .welcome > :nth-child(3) { animation-delay: 0.08s; }
+  .welcome > :nth-child(4) { animation-delay: 0.16s; }
+  .welcome > :nth-child(5) { animation-delay: 0.26s; }
+  .welcome > :nth-child(6) { animation-delay: 0.34s; }
+  .welcome > .floaters { animation: fadeIn 1.2s ease both; }
+  .float-btn { animation: floatA 5.5s ease-in-out infinite; }
+  .float-btn.signin { animation: floatB 6.5s ease-in-out infinite; }
+  .float-btn:hover:not(:disabled), .float-btn:focus-visible { animation-play-state: paused; box-shadow: 0 22px 44px rgb(0 0 0 / 0.28); }
+  .floater { animation: drift calc(7s + var(--i, 0) * 1.3s) ease-in-out calc(var(--i, 0) * -1.1s) infinite alternate; }
+  .mascot { animation: mascotBob 2.6s ease-in-out infinite; }
+  .mascot .eye { animation: mascotBlink 4.2s infinite; }
+  .mascot.talking .mouth { animation: mascotTalk 0.42s ease-in-out infinite; }
+  .coach { animation: capIn 0.28s ease both; }
+  button.coach-aim { animation: aimPulse 1.3s ease-in-out infinite; }
 }

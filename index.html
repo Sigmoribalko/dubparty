@@ -45,12 +45,39 @@
       }
     </script>
 
+    <!-- Loading screen: painted from this file alone, before the app's script has run. -->
+    <style>
+      #splash { position: fixed; inset: 0; z-index: 1000; display: grid; place-items: center; background: #efefec; transition: opacity 0.4s ease, visibility 0.4s; }
+      #splash.out { opacity: 0; visibility: hidden; }
+      .splash-in { display: grid; justify-items: center; gap: 26px; }
+      .splash-dot { width: 64px; height: 64px; border-radius: 50%; background: #e8452c; animation: splashBounce 0.9s cubic-bezier(0.3, 0, 0.7, 1) infinite alternate; }
+      .splash-bars { display: flex; align-items: center; gap: 6px; height: 34px; }
+      .splash-bars i { width: 6px; height: 100%; border-radius: 3px; background: #1a1a18; transform-origin: center; animation: splashWave 1s ease-in-out infinite; }
+      .splash-bars i:nth-child(2) { animation-delay: 0.12s; }
+      .splash-bars i:nth-child(3) { animation-delay: 0.24s; }
+      .splash-bars i:nth-child(4) { animation-delay: 0.36s; }
+      .splash-bars i:nth-child(5) { animation-delay: 0.48s; }
+      @keyframes splashBounce { from { transform: translateY(-14px) scale(1.04, 0.97); } to { transform: translateY(10px) scale(0.96, 1.05); } }
+      @keyframes splashWave { 0%, 100% { transform: scaleY(0.25); } 50% { transform: scaleY(1); } }
+      @media (prefers-color-scheme: dark) { #splash { background: #131312; } .splash-bars i { background: #efeee8; } }
+      :root[data-theme="dark"] #splash { background: #131312; } :root[data-theme="dark"] .splash-bars i { background: #efeee8; }
+      :root[data-theme="light"] #splash { background: #efefec; } :root[data-theme="light"] .splash-bars i { background: #1a1a18; }
+      @media (prefers-reduced-motion: reduce) { .splash-dot, .splash-bars i { animation: none; } .splash-bars i { transform: scaleY(0.6); } }
+    </style>
+    <noscript><style>#splash { display: none; }</style></noscript>
+
     <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Ccircle cx='16' cy='16' r='13' fill='%23e8452c'/%3E%3C/svg%3E" />
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link href="https://fonts.googleapis.com/css2?family=Unbounded:wght@500;700;900&family=Manrope:wght@400;600;700&display=swap&subset=cyrillic" rel="stylesheet" />
   </head>
   <body>
+    <div id="splash" aria-hidden="true">
+      <div class="splash-in">
+        <div class="splash-dot"></div>
+        <div class="splash-bars"><i></i><i></i><i></i><i></i><i></i></div>
+      </div>
+    </div>
     <div id="root">
       <!-- What search engines (and visitors without JavaScript) see; replaced by the app on load. -->
       <main class="seo">

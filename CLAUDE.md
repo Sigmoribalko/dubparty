@@ -13,6 +13,15 @@ Live: https://dubparty.ru (GitHub Pages, repo Sigmoribalko/dubparty). Owner talk
   HTTPS is enforced since 2026-10-11. New DNS records go in Cloudflare, not reg.ru. Resend records live there too
   (`send.mail`, `rsend.mail` CNAMEs, `resend._domainkey.mail` TXT).
 
+## First visit (`src/views/Home.tsx`, `src/state/tutorial.ts`)
+- `index.html` paints a loading screen (`#splash`, styles inline in the page) until the app has rendered; `main.tsx` fades it.
+- Home leads a newcomer in three steps: welcome (floating "Играть как гость" / "Войти") → tutorial offer → the two play
+  cards. Progress is in localStorage `dubl-onboard`; returning players, signed-in users and anyone with a room to go back
+  to skip straight to the play cards. Invite links (`?room=`) never see the welcome.
+- Tutorial = a solo practice round (`game.solo`) on the real Record and Screening screens, with step hints (`.coach`).
+  The scene is our own: `public/tutorial.mp4` ("Точка", drawn by `scripts/make-tutorial-clip.py`) and a babbling voice
+  synthesised in `buildTutorial()`. Syllable timings are duplicated in those two files — change both. No film footage.
+
 ## Game flow (owner's spec)
 lobby (host picks/imports pack + scene, invites, everyone downloads) → host "Начать: выбор ролей" → casting (pick role,
 "Перевыбрать", "Перемешать роли"; public rooms deal at random) → host "Начать запись" when everyone has a role →
