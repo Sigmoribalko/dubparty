@@ -179,7 +179,8 @@ button.link:hover { transform: none; }
 
 .players { list-style: none; margin: 0; padding: 0; display: grid; gap: 8px; }
 .player { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
-.player.off { opacity: 0.5; }
+/* Dim a dropped player, but not the host's kick menu on that row. */
+.player.off > :not(.menu-wrap) { opacity: 0.5; }
 .player-name { flex: 1; min-width: 100px; font-weight: 700; }
 .player-name small { font-weight: 400; }
 .avatar { width: 32px; height: 32px; border-radius: 50%; display: grid; place-items: center; background: var(--ink); color: var(--bg); font: 700 0.85rem var(--font-display); flex: none; }

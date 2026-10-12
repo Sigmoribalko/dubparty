@@ -4,11 +4,12 @@ import { unlockAudio } from "../lib/audio/engine";
 import { store } from "../lib/store";
 import type { Pack } from "../lib/types";
 import {
-  capacityOf, createRoom, everyoneCast, hostCast, hostSelectScene, hostSetPublic, hostStart, hostToLobby, hostToScreening, inviteLink, joinRoom,
+  capacityOf, createRoom, everyoneCast, hostCast, hostKick, hostSelectScene, hostSetPublic, hostStart, hostToLobby, hostToScreening, inviteLink, joinRoom,
   leaveRoom, normalizeCode, onlinePlayers, pickRole, playersNeeded, randomizeRoles, useRoom, type Player, type Snapshot,
 } from "../net/room";
 import { playableRoles } from "../state/game";
 import { FileButton } from "../components/FileButton";
+import { Menu } from "../components/Menu";
 import { importFiles } from "../lib/pack/import";
 import { findRooms, joinable, type FoundRoom } from "../net/finder";
 import { displayName, useAuth } from "../lib/auth/auth";
@@ -380,8 +381,20 @@ function Invite({ code }: { code: string }) {
   );
 }
 
+/** The host's "remove this player" menu: kick (may come back) or ban (may not). */
+function KickMenu({ p }: { p: Player }) {
+  const t = useT();
+  return (
+    <Menu label="⋯" className="small ghost icon-only" ariaLabel={t.online.playerActions(p.name)}>
+      <button role="menuitem" className="menu-item" onClick={() => { if (confirm(t.online.kickConfirm(p.name))) hostKick(p.id); }}>{t.online.kick}</button>
+      <button role="menuitem" className="menu-item danger" onClick={() => { if (confirm(t.online.banConfirm(p.name))) hostKick(p.id, true); }}>{t.online.ban}</button>
+    </Menu>
+  );
+}
+
 function PlayerRow({ p, snap, me }: { p: Player; snap: Snapshot; me: boolean }) {
   const t = useT();
+  const isHost = useRoom((s) => s.isHost);
   const role = snap.scene?.roles.find((r) => r.id === p.roleId);
   const status = !p.online ? t.online.offline : !p.ready ? (p.progress != null ? t.online.downloading(p.progress) : t.online.waitingScene) : null;
   return (
@@ -393,6 +406,7 @@ function PlayerRow({ p, snap, me }: { p: Player; snap: Snapshot; me: boolean }) 
       </span>
       {status ? <span className="muted fine">{status}</span> : role ? <span className="chip tag" style={{ ["--c" as string]: role.color }}>{role.name}</span> : <span className="muted fine">{t.online.noRole}</span>}
       {p.progress != null && !p.ready && <span className="mini-bar" aria-hidden="true"><i style={{ transform: `scaleX(${p.progress})` }} /></span>}
+      {isHost && !p.host && <KickMenu p={p} />}
     </li>
   );
 }
@@ -476,6 +490,7 @@ export function RecordingWait({ snap }: { snap: Snapshot }) {
                 <span className={p.submitted ? "ok" : "muted fine"}>
                   {p.submitted ? t.online.sentMark : !p.online ? t.online.offline : t.online.linesLeft(linesOf(p) - p.linesDone)}
                 </span>
+                {isHost && !p.host && <KickMenu p={p} />}
               </li>
             );
           })}

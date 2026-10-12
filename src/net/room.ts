@@ -79,6 +79,9 @@ const guests = new Map<string, Link>(); // host side
 let hostLink: Link | null = null; // guest side
 /** Host side: a player's secret key → their current peer id, so someone who drops can take their seat back. */
 let keys = new Map<string, string>();
+/** Host side: each connected player's key, and the keys the host has banned from this room. */
+const keyOf = new Map<string, string>();
+let banned = new Set<string>();
 
 /* ---------- surviving a closed tab ---------- */
 
@@ -106,14 +109,14 @@ const readJson = <T,>(key: string): T | null => { try { return JSON.parse(localS
 const writeJson = (key: string, v: unknown) => { try { localStorage.setItem(key, JSON.stringify(v)); } catch { /* private mode / full */ } };
 const forget = (key: string) => { try { localStorage.removeItem(key); } catch { /* private mode */ } };
 
-interface Hosted { v: 1; savedAt: number; snap: Snapshot; keys: Array<[string, string]>; wantPublic: boolean; ownTake?: { roleId: string; offset: number; effect: EffectId; round: number } }
+interface Hosted { v: 1; savedAt: number; snap: Snapshot; keys: Array<[string, string]>; banned?: string[]; wantPublic: boolean; ownTake?: { roleId: string; offset: number; effect: EffectId; round: number } }
 interface LastRoom { code: string; host: boolean; at: number; name: string; scene?: string }
 
 function saveHosted() {
   const st = useRoom.getState();
   if (!st.isHost || !st.snap || st.status !== "open") return;
   const prev = readJson<Hosted>(HOSTED_STORE);
-  writeJson(HOSTED_STORE, { v: 1, savedAt: Date.now(), snap: st.snap, keys: [...keys], wantPublic, ownTake: prev?.snap.code === st.snap.code ? prev.ownTake : undefined } satisfies Hosted);
+  writeJson(HOSTED_STORE, { v: 1, savedAt: Date.now(), snap: st.snap, keys: [...keys], banned: [...banned], wantPublic, ownTake: prev?.snap.code === st.snap.code ? prev.ownTake : undefined } satisfies Hosted);
   rememberRoom(true);
 }
 function rememberRoom(host: boolean) {
@@ -236,6 +239,8 @@ export function resumeRoom(attempt = 0) {
   peer = p;
   p.on("open", async (id) => {
     keys = new Map(saved.keys);
+    banned = new Set(Array.isArray(saved.banned) ? saved.banned.map(String) : []);
+    keyOf.clear();
     wantPublic = saved.wantPublic;
     const snap = structuredClone(saved.snap);
     roundTakes.clear();
@@ -287,7 +292,10 @@ function hostHandle(link: Link, msg: Json) {
     case "hello": {
       const cur = useRoom.getState().snap!;
       const key = typeof msg.key === "string" ? msg.key.slice(0, 64) : "";
-      const prevId = key ? keys.get(key) : undefined;
+      // Everyone is known by their browser's key: that's what a ban sticks to.
+      if (key.length < 16) return reject(link, "full");
+      if (banned.has(key)) return reject(link, "banned");
+      const prevId = keys.get(key);
       // Same browser back after a closed tab or a crash: give them their seat (and role) back.
       const back = prevId && prevId !== id ? cur.players.find((p) => p.id === prevId && !p.online) : undefined;
       if (!back && !cur.players.some((p) => p.id === id)) {
@@ -298,9 +306,10 @@ function hostHandle(link: Link, msg: Json) {
         if (cur.public && cur.phase !== "lobby" && cur.phase !== "casting") return reject(link, "started");
       }
       guests.set(id, link);
+      keyOf.set(id, key);
       if (back) { const stale = guests.get(back.id); guests.delete(back.id); stale?.close(); }
       // Never let a second tab of the same browser steal a seat that's still in use.
-      if (key && (back || !prevId || !cur.players.some((p) => p.id === prevId && p.online))) keys.set(key, id);
+      if (back || !prevId || !cur.players.some((p) => p.id === prevId && p.online)) keys.set(key, id);
       const name = String(msg.name || "").slice(0, 30) || t().online.guest;
       hostUpdate((s) => {
         if (back) {
@@ -328,7 +337,6 @@ function hostHandle(link: Link, msg: Json) {
       sendSceneMedia(link, [...new Set(msg.keys.map(String))].filter((k) => allowed.has(k)));
       break;
     }
-      break;
     case "progress":
       hostUpdate((s) => { const p = s.players.find((x) => x.id === id); if (p) p.progress = Math.max(0, Math.min(1, Number(msg.p) || 0)); }, true);
       break;
@@ -344,9 +352,37 @@ function hostHandle(link: Link, msg: Json) {
   }
 }
 
-function reject(link: Link, reason: "full" | "started") {
+function reject(link: Link, reason: "full" | "started" | "banned") {
   link.send({ t: "reject", reason });
   setTimeout(() => link.close(), 500);
+}
+
+/**
+ * The host removes a player from the room. A kicked player may come back with the code;
+ * a banned one is refused for as long as this room lives (the ban sticks to their browser's key).
+ * What they had already submitted this round stays in the dub; lines not yet submitted are dropped.
+ */
+export function hostKick(playerId: string, ban = false) {
+  const st = useRoom.getState();
+  if (!st.isHost || !st.snap || playerId === st.myId) return;
+  const key = keyOf.get(playerId) ?? [...keys].find(([, id]) => id === playerId)?.[0];
+  if (ban && key) banned.add(key);
+  // A ban covers every tab that browser has open here.
+  const out = new Set([playerId]);
+  if (ban && key) keyOf.forEach((k, id) => { if (k === key) out.add(id); });
+  const roles = st.snap.players.filter((p) => out.has(p.id) && p.roleId).map((p) => p.roleId!);
+  for (const id of out) {
+    const link = guests.get(id);
+    // Off the guest list first, so the closing link isn't treated as a dropped player holding a seat.
+    guests.delete(id);
+    keyOf.delete(id);
+    if (link) { link.send({ t: "kicked", ban }); setTimeout(() => link.close(), 500); }
+  }
+  roles.forEach((r) => partials.delete(r));
+  hostUpdate((s) => {
+    s.players = s.players.filter((p) => !out.has(p.id));
+    out.forEach((id) => { delete s.votes[id]; });
+  });
 }
 
 /** Deal online players onto random roles (extra roles stay free). */
@@ -805,7 +841,15 @@ function guestHandle(msg: Json) {
       playListeners.forEach((f) => f());
       break;
     case "reject":
-      setRoom({ status: "error", error: msg.reason === "full" ? t().online.errFull : t().online.errStarted, snap: null });
+      setRoom({ status: "error", reconnecting: false, error: msg.reason === "full" ? t().online.errFull : msg.reason === "banned" ? t().online.errBanned : t().online.errStarted, snap: null });
+      if (msg.reason === "banned") forget(LAST_STORE);
+      hostLink = null;
+      setTimeout(() => { try { peer?.destroy(); } catch { /* gone */ } }, 100);
+      break;
+    case "kicked":
+      // Removed by the host: no reconnecting, no "back to the room" offer.
+      setRoom({ status: "error", reconnecting: false, error: msg.ban ? t().online.errBanned : t().online.errKicked, snap: null });
+      forget(LAST_STORE);
       hostLink = null;
       setTimeout(() => { try { peer?.destroy(); } catch { /* gone */ } }, 100);
       break;
@@ -948,6 +992,8 @@ export function leaveRoom() {
   const closing = [...guests.values()];
   setTimeout(() => closing.forEach((g) => g.close()), 300);
   keys = new Map();
+  keyOf.clear();
+  banned = new Set();
   guests.clear();
   hostLink?.close();
   hostLink = null;

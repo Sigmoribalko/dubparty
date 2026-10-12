@@ -37,6 +37,10 @@ recording line by line ("Реплика N из M": listen original, record, list
   Back in the same round after a reload, the lines are restored and recording continues from the first missing one.
   If the host starts the show without someone (`hostToScreening` → `hostUsePartials`), their handed-over lines are
   joined into a voice track like a normal submission; lines they didn't record stay silent.
+- Host can kick or ban from the player rows (`hostKick`, "⋯" menu in lobby, casting and the waiting screen). Kick =
+  removed now, may rejoin with the code. Ban = the player's key is refused for this room (saved with the hosted room,
+  never sent to guests); it is per browser, so a cleared browser or another device gets around it. `hello` without a
+  key is refused. What a removed player already submitted stays in the round; unsubmitted lines are dropped.
 - Guests auto-reconnect to the host for 90 s ("Переподключаюсь…" banner) and resend their own take on return.
 - The host's room is saved in localStorage (`dubl-hosted`, own take blob in IndexedDB) for 20 min; Home offers
   "Вернуться в комнату" and `resumeRoom()` reopens the same room id. Leaving on purpose sends `bye` to guests.
