@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { Band } from "../components/Band";
 import { FileButton } from "../components/FileButton";
 import { VideoErrorModal } from "../components/VideoErrorModal";
+import { dealRoles, findSpeech } from "../lib/audio/speech";
 import { exportPack } from "../lib/pack/export";
 import { sceneMediaKeys, store } from "../lib/store";
 import type { Line, Pack, Scene } from "../lib/types";
@@ -11,6 +12,14 @@ import { useT } from "../i18n";
 import { notify, useApp } from "../state/app";
 
 const round1 = (t: number) => Math.round(t * 10) / 10;
+
+/** Find where people speak in the scene's video and turn each stretch into a line (timing only: no text, roles guessed). */
+async function detectLines(scene: Scene): Promise<Line[] | null> {
+  const media = await store.getMedia(scene.id);
+  const spans = media ? await findSpeech(media) : null;
+  if (!spans) return null;
+  return dealRoles(spans, scene.roles.map((r) => r.id)).map((s) => ({ id: uid(), roleId: s.roleId, start: s.start, end: s.end, text: "" }));
+}
 
 export function Editor({ packId }: { packId: string }) {
   const t = useT();
@@ -57,6 +66,13 @@ export function Editor({ packId }: { packId: string }) {
     await store.putMedia(s.id, withMime(file, ext));
     mutate((d) => { d.scenes.push(s); }, true);
     setSceneId(s.id);
+    // A raw video is enough: the lines are found by ear, the author only checks roles and types the text.
+    notify(t.editor.autoBusy);
+    const found = await detectLines(s);
+    if (!found) { notify(t.editor.autoNoAudio); return; }
+    if (!found.length) { notify(t.editor.autoNone); return; }
+    mutate((d) => { const sc = d.scenes.find((x) => x.id === s.id); if (sc && !sc.lines.length) sc.lines = found; }, true);
+    notify(t.editor.autoFound(found.length));
   };
 
   const doExport = async () => {
@@ -119,6 +135,20 @@ function SceneEditor({ scene, update, onDelete }: SceneEditorProps) {
   const [roleName, setRoleName] = useState("");
   const [fresh, setFresh] = useState<string | null>(null);
   const [mediaRev, setMediaRev] = useState(0);
+  const [detecting, setDetecting] = useState(false);
+
+  const autoLines = async () => {
+    if (detecting) return;
+    if (!scene.roles.length) return notify(t.editor.needRole);
+    if (scene.lines.length && !confirm(t.editor.autoReplace)) return;
+    setDetecting(true);
+    const found = await detectLines(scene);
+    setDetecting(false);
+    if (!found) return notify(t.editor.autoNoAudio);
+    if (!found.length) return notify(t.editor.autoNone);
+    update((s) => { s.lines = found; }, true);
+    notify(t.editor.autoFound(found.length));
+  };
 
   useEffect(() => {
     let live = true;
@@ -264,6 +294,7 @@ function SceneEditor({ scene, update, onDelete }: SceneEditorProps) {
       <section className="panel stack" aria-labelledby="lines-h">
         <div className="row">
           <h3 id="lines-h" style={{ flex: 1 }}>{t.editor.lines}</h3>
+          {detecting ? <div className="row"><div className="spinner" /><span className="muted fine">{t.editor.autoBusy}</span></div> : <button className="small" onClick={autoLines}>{t.editor.autoLines}</button>}
           <button className="small primary" onClick={addLine}>{t.editor.addLine}</button>
         </div>
         <p className="muted fine">{t.editor.linesHint}</p>
