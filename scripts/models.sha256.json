@@ -1,0 +1,14 @@
+{
+  "onnx-community/wespeaker-voxceleb-resnet34-LM/config.json": "4a65a1544d2085d7819632f130583d83f6815f49ef6c8ba6c8eb460bd4085041",
+  "onnx-community/wespeaker-voxceleb-resnet34-LM/preprocessor_config.json": "a81bbded0530b1bf5c3d395d2c5c7c266686e348be5989171290ace960f24ec2",
+  "onnx-community/whisper-base/config.json": "f4d0608f7d918166da7edb3e188de5ef1bfe70d9802e785d271fd88111e9cf4b",
+  "onnx-community/whisper-base/generation_config.json": "61070cf8de25b1e9256e8e102ded49d8d24a8369ed36ef84fdf21549e68125a0",
+  "onnx-community/whisper-base/preprocessor_config.json": "a6a76d28c93edb273669eb9e0b0636a2bddbb1272c3261e47b7ca6dfdbac1b8d",
+  "onnx-community/whisper-base/tokenizer.json": "27fc476bfe7f17299480be2273fc0608e4d5a99aba2ab5dec5374b4482d1a566",
+  "onnx-community/whisper-base/tokenizer_config.json": "2e036e4dbacfdeb7242c7d4ec4149f4a16e86026048f94d1637e3a8ee9c6a573",
+  "onnx-community/whisper-base/special_tokens_map.json": "e67ae3a0aaa99abcd9f187138e12db1f65c16a14761c50ef10eef2c174a7a691",
+  "onnx-community/whisper-base/added_tokens.json": "9715fd2243b6f06a5858b5e32950d2853f73dd5bc201aafcf76f5082a2d8acd1",
+  "onnx-community/whisper-base/normalizer.json": "bf1c507dc8724ca9cf9903640dacfb69dae2f00edee4f21ceba106a7392f26dd",
+  "onnx-community/whisper-base/vocab.json": "50d6a919f0a0601d56a04eb583c780d18553aa388254ba3158eb6a00f13e2c1a",
+  "onnx-community/whisper-base/merges.txt": "2df2990a395e35e8dfbc7511e08c12d56018d8d04691e0133e5d63b21e154dc6"
+}

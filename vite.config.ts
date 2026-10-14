@@ -40,7 +40,8 @@ function csp(): Plugin {
         "form-action 'self'",
         // DOM XSS: the browser refuses raw strings in innerHTML & co.
         "require-trusted-types-for 'script'",
-        "trusted-types 'none'",
+        // One policy, used only to start the AI worker (src/lib/ai.ts); every other script URL is refused.
+        "trusted-types dubparty-ai",
         "upgrade-insecure-requests",
       ].join("; ");
       const meta =
@@ -55,5 +56,7 @@ function csp(): Plugin {
 // straight from disk (file://) — handy for sharing the game as one file.
 export default defineConfig({
   plugins: [react(), viteSingleFile(), csp()],
+  // Same runtime as the separate AI build (vite.ai.config.ts), for development where src/ai is imported directly.
+  resolve: { alias: { "onnxruntime-web/webgpu": "/node_modules/onnxruntime-web/dist/ort.wasm.min.mjs" } },
   build: { target: "es2022", assetsInlineLimit: Infinity },
 });

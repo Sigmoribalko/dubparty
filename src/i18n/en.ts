@@ -120,6 +120,11 @@ export const en: Dict = {
   },
   importer: {
     busyTitle: "Importing pack…",
+    textTitle: "Recognising the lines' text",
+    textDownload: (loaded: number, total: number) => `Downloading the speech model: ${Math.round(loaded / 1e6)} of ${Math.round(total / 1e6)} MB. Only the first time.`,
+    textProgress: (done: number, total: number) => `Line ${Math.min(done + 1, total)} of ${total}…`,
+    textHint: "Recognition runs on this device; the video isn't sent anywhere. You can skip it: type the text yourself or recognise it later in the editor.",
+    textFailed: "Couldn't recognise the text. You can type it in.",
     videoBusyTitle: "Taking the video apart…",
     videoBusyText: "Finding the lines and telling the voices apart. Usually a few seconds.",
     videoDoneTitle: "The video is ready to play",
@@ -187,6 +192,8 @@ export const en: Dict = {
     autoNone: "Couldn't find the lines: speech doesn't stand out from the rest of the sound. Add them by hand.",
     autoNoAudio: "Couldn't read this video's sound. Add the lines by hand.",
     autoReplace: "Replace the current lines with the ones found by sound?",
+    recognizeText: "Recognise the text",
+    textReplace: "Every line already has text. Recognise it again and replace it?",
     needRole: "Add a role first",
     noLines: "No lines. You can leave the scene like this for improv.",
     bandEmpty: "No lines yet",
@@ -278,6 +285,7 @@ export const en: Dict = {
     tooBig: "The file is too large for browser storage; it'll only be kept until you reload",
   },
   settings: {
+    aiCredits: "Lines and voices are found by AI right on your device: the WeSpeaker ResNet34 (WeNet, CC BY 4.0) and Whisper base (OpenAI, MIT) models. The video isn't sent anywhere.",
     title: "Settings",
     playback: "Volume",
     master: "Master",

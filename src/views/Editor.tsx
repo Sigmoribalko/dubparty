@@ -3,6 +3,7 @@ import { Band } from "../components/Band";
 import { FileButton } from "../components/FileButton";
 import { VideoErrorModal } from "../components/VideoErrorModal";
 import { findSpeech } from "../lib/audio/speech";
+import { transcribeLines } from "../lib/audio/transcribe";
 import { exportPack } from "../lib/pack/export";
 import { sceneMediaKeys, store } from "../lib/store";
 import type { Line, Pack, Role, Scene } from "../lib/types";
@@ -141,6 +142,38 @@ function SceneEditor({ scene, update, onDelete }: SceneEditorProps) {
   const [fresh, setFresh] = useState<string | null>(null);
   const [mediaRev, setMediaRev] = useState(0);
   const [detecting, setDetecting] = useState(false);
+  /** Text recognition in progress: lines done of total, or the model download in bytes. */
+  const [textJob, setTextJob] = useState<{ done: number; total: number; download: [number, number] | null } | null>(null);
+  const stopText = useRef<{ requested: boolean } | null>(null);
+
+  /** Fill in the text of the lines that have none (or of all of them, after asking) with the speech model. */
+  const recognizeText = async () => {
+    if (textJob || !scene.lines.length) return;
+    let target = scene.lines.filter((l) => !l.text.trim());
+    if (!target.length) {
+      if (!confirm(t.editor.textReplace)) return;
+      target = scene.lines;
+    }
+    const media = await store.getMedia(scene.id);
+    if (!media) return notify(t.editor.autoNoAudio);
+    const stop = { requested: false };
+    stopText.current = stop;
+    setTextJob({ done: 0, total: target.length, download: null });
+    try {
+      const res = await transcribeLines(media, target, {
+        onDownload: (loaded, total) => setTextJob((j) => (j ? { ...j, download: [loaded, total] } : j)),
+        onLine: (id, text, done, total) => {
+          if (text) update((s) => { const l = s.lines.find((x) => x.id === id); if (l) l.text = text; });
+          setTextJob({ done, total, download: null });
+        },
+      }, stop);
+      if (!res) notify(t.editor.autoNoAudio);
+    } catch {
+      notify(t.importer.textFailed);
+    }
+    stopText.current = null;
+    setTextJob(null);
+  };
 
   const autoLines = async () => {
     if (detecting) return;
@@ -298,7 +331,14 @@ function SceneEditor({ scene, update, onDelete }: SceneEditorProps) {
       <section className="panel stack" aria-labelledby="lines-h">
         <div className="row">
           <h3 id="lines-h" style={{ flex: 1 }}>{t.editor.lines}</h3>
-          {detecting ? <div className="row"><div className="spinner" /><span className="muted fine">{t.editor.autoBusy}</span></div> : <button className="small" onClick={autoLines}>{t.editor.autoLines}</button>}
+          {detecting ? <div className="row"><div className="spinner" /><span className="muted fine">{t.editor.autoBusy}</span></div> : <button className="small" onClick={autoLines} disabled={!!textJob}>{t.editor.autoLines}</button>}
+          {textJob ? (
+            <div className="row">
+              <div className="spinner" />
+              <span className="muted fine">{textJob.download ? t.importer.textDownload(textJob.download[0], textJob.download[1]) : t.importer.textProgress(textJob.done, textJob.total)}</span>
+              <button className="small ghost" onClick={() => { if (stopText.current) stopText.current.requested = true; }}>{t.common.stop}</button>
+            </div>
+          ) : <button className="small" onClick={recognizeText} disabled={detecting || !scene.lines.length}>{t.editor.recognizeText}</button>}
           <button className="small primary" onClick={addLine}>{t.editor.addLine}</button>
         </div>
         <p className="muted fine">{t.editor.linesHint}</p>

@@ -1,3 +1,4 @@
+import { loadAI, type Progress } from "../ai";
 import { audioCtx } from "./engine";
 
 /*
@@ -8,8 +9,10 @@ import { audioCtx } from "./engine";
  * dialogue sits in the centre of the stereo picture and in the speech band, while music and
  * effects are spread to the sides. So the level that is tracked is the centred speech-band signal
  * minus what the sides carry, and a span is wherever that level rises clearly above the scene's
- * own quiet floor. "Who" is told by how high the voice is: spans whose pitch differs clearly
- * are different people (a man and a woman, an adult and a child); similar voices stay together.
+ * own quiet floor. "Who" is told by a voice fingerprint from a small AI model that runs in the
+ * browser (src/ai): lines whose fingerprints are close are one person, even when two voices are
+ * similar in pitch. If the model can't run, pitch is used instead: lines whose pitch differs
+ * clearly are different people (a man and a woman, an adult and a child).
  */
 
 export interface SpeechSpan { start: number; end: number }
@@ -229,19 +232,100 @@ function tellVoices(buf: AudioBuffer, spans: SpeechSpan[]): { voice: number[]; v
   return { voice, voices: Math.max(1, order.length) };
 }
 
+/* ---------- who, with the AI: voice fingerprints ---------- */
+
+/** Clips shorter than this give unreliable fingerprints: they follow the closest voice instead. */
+const MIN_PRINT = 0.6;
+/** Average similarity of two groups' fingerprints above which they are one person. */
+const SAME_VOICE = 0.5;
+/** A short clip joins a voice it resembles at least this much, otherwise whoever spoke just before. */
+const LIKELY_VOICE = 0.3;
+const MAX_AI_VOICES = 4;
+
+/** The whole sound as mono 16 kHz (what the models take). */
+async function mono16k(buf: AudioBuffer): Promise<Float32Array> {
+  const oc = new OfflineAudioContext(1, Math.max(1, Math.ceil(buf.duration * 16000)), 16000);
+  const src = oc.createBufferSource();
+  src.buffer = buf;
+  src.connect(oc.destination);
+  src.start();
+  return (await oc.startRendering()).getChannelData(0);
+}
+
+const cosine = (a: Float32Array, b: Float32Array) => { let s = 0; for (let i = 0; i < a.length; i++) s += a[i] * b[i]; return s; };
+
+async function tellVoicesAI(pcm: Float32Array, spans: SpeechSpan[], onProgress?: Progress): Promise<{ voice: number[]; voices: number }> {
+  const ai = await loadAI();
+  const clip = (s: SpeechSpan) => pcm.subarray(Math.floor(s.start * 16000), Math.ceil(s.end * 16000));
+  const strong = spans.map((s, i) => ({ s, i })).filter((x) => x.s.end - x.s.start >= MIN_PRINT);
+  const prints = await ai.voicePrints(strong.map((x) => clip(x.s)), onProgress);
+
+  // Agglomerative clustering, average linkage: keep joining the two most alike groups while they are alike enough.
+  let groups = strong.map((_, k) => ({ members: [k] }));
+  const sim = (a: number[], b: number[]) => { let t = 0; for (const i of a) for (const j of b) t += cosine(prints[i], prints[j]); return t / (a.length * b.length); };
+  for (;;) {
+    let best = -2, bi = -1, bj = -1;
+    for (let i = 0; i < groups.length; i++) for (let j = i + 1; j < groups.length; j++) {
+      const v = sim(groups[i].members, groups[j].members);
+      if (v > best) { best = v; bi = i; bj = j; }
+    }
+    if (bi < 0 || (best < SAME_VOICE && groups.length <= MAX_AI_VOICES)) break;
+    groups[bi].members.push(...groups[bj].members);
+    groups = groups.filter((_, k) => k !== bj);
+  }
+
+  const group = new Array<number>(spans.length).fill(-1);
+  groups.forEach((g, gi) => g.members.forEach((k) => { group[strong[k].i] = gi; }));
+  // Short lines: the voice they sound most like, if any clearly; otherwise the person who spoke just before.
+  const shortOnes = spans.map((s, i) => ({ s, i })).filter((x) => group[x.i] < 0 && x.s.end - x.s.start >= 0.25);
+  if (shortOnes.length && groups.length) {
+    const p2 = await ai.voicePrints(shortOnes.map((x) => clip(x.s)));
+    shortOnes.forEach((x, k) => {
+      let best = LIKELY_VOICE, gi = -1;
+      groups.forEach((g, gIdx) => { const v = g.members.reduce((t, m) => t + cosine(p2[k], prints[m]), 0) / g.members.length; if (v > best) { best = v; gi = gIdx; } });
+      group[x.i] = gi;
+    });
+  }
+  for (let i = 0; i < group.length; i++) if (group[i] < 0) group[i] = i ? group[i - 1] : (group.find((v) => v >= 0) ?? 0);
+  const order: number[] = [];
+  const voice = group.map((id) => { if (!order.includes(id)) order.push(id); return order.indexOf(id); });
+  return { voice, voices: Math.max(1, order.length) };
+}
+
 export interface FoundSpeech {
   /** Where somebody speaks, each with the number of the voice it sounds like. */
   spans: Array<SpeechSpan & { voice: number }>;
   /** How many different voices were told apart (at least 1). */
   voices: number;
+  /** Voices were told apart by the AI fingerprints (false: by pitch, the fallback). */
+  ai: boolean;
 }
 
-/** Where people speak in this video or audio file, and which voice each time. Null when its sound can't be read. */
-export async function findSpeech(media: Blob): Promise<FoundSpeech | null> {
+/** Decode a video or audio file's sound. Null when it can't be read. */
+export async function decodeSound(media: Blob): Promise<AudioBuffer | null> {
   if (media.size > MAX_BYTES) return null;
-  let buf: AudioBuffer;
-  try { buf = await audioCtx().decodeAudioData(await media.arrayBuffer()); } catch { return null; }
+  try { return await audioCtx().decodeAudioData(await media.arrayBuffer()); } catch { return null; }
+}
+
+/** The whole sound of a file as mono 16 kHz, for the AI. */
+export async function soundForAI(media: Blob): Promise<Float32Array | null> {
+  const buf = await decodeSound(media);
+  return buf ? mono16k(buf) : null;
+}
+
+/**
+ * Where people speak in this video or audio file, and which voice each time. Null when its sound
+ * can't be read. `onProgress` reports the first download of the voice model (about 7 MB).
+ */
+export async function findSpeech(media: Blob, onProgress?: Progress): Promise<FoundSpeech | null> {
+  const buf = await decodeSound(media);
+  if (!buf) return null;
   const spans = spansFromLevels(voiceLevels(buf), buf.duration);
-  const { voice, voices } = tellVoices(buf, spans);
-  return { spans: spans.map((s, i) => ({ ...s, voice: voice[i] })), voices };
+  let told: { voice: number[]; voices: number } | null = null;
+  if (spans.length > 1) {
+    try { told = await tellVoicesAI(await mono16k(buf), spans, onProgress); } catch { told = null; }
+  }
+  const ai = !!told;
+  told ??= tellVoices(buf, spans);
+  return { spans: spans.map((s, i) => ({ ...s, voice: told!.voice[i] })), voices: told.voices, ai };
 }
