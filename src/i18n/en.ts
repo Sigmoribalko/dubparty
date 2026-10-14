@@ -49,7 +49,7 @@ export const en: Dict = {
   },
   home: {
     title: "You do the voices. Everyone laughs.",
-    lead: "Dub movie scenes with friends or random players, each on their own phone. Twist your voice with effects, watch the result and pick the best voice.",
+    lead: "Dub any video with friends or random players, each on their own phone. Twist your voice with effects, watch the result and pick the best voice.",
     newGame: "Create game",
     findGame: "Find a game",
     findKicker: "No friends around?",
@@ -87,7 +87,7 @@ export const en: Dict = {
     ],
   },
   welcome: {
-    lead: "Movie scenes, your voices. Everyone plays on their own phone.",
+    lead: "Any video, your voices. Everyone plays on their own phone.",
     guest: "Play as a guest",
     signIn: "Sign in",
     signUp: "Create an account",
@@ -114,7 +114,7 @@ export const en: Dict = {
       submit: "Done. Press Submit and watch the result",
     },
     doneTitle: "That's your first dub",
-    doneText: "With friends everyone gets a part in a movie scene, and at the end you all vote for the best voice.",
+    doneText: "With friends everyone gets a part in a scene, and at the end you all vote for the best voice.",
     playFriends: "Play with friends",
     retry: "Again",
   },

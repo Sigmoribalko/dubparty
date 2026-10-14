@@ -1,6 +1,6 @@
 # DubParty — project notes for Claude
 
-Online party game: friends (or random players) dub movie scenes together, each on their own phone.
+Online party game: friends (or random players) dub video scenes together, each on their own phone.
 Live: https://dubparty.ru (GitHub Pages, repo Sigmoribalko/dubparty). Owner talks in Russian, wants short, practical answers.
 
 ## Stack
@@ -106,7 +106,7 @@ recording line by line ("Реплика N из M": listen original, record, list
 
 ## Preferences learned
 - Online-only game, one format (whole group dubs a scene, vote for best voice). No local single-device mode, no team mode.
-- No emoji in the UI. Keep design non-"AI-looking"; no demo track on the home page.
+- Texts never say "фильмы"/"movies": scenes come from any video (series, clips, memes). No emoji in the UI. Keep design non-"AI-looking"; no demo track on the home page.
 - No native `confirm()`/`alert()`: ask with `ask()` / `askLeave()` from `src/components/Ask.tsx` (animated dialog,
   bottom sheet on phones).
 - Test on phone layouts (bottom nav, sheets); avoid horizontal overflow.
