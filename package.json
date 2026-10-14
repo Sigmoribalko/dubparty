@@ -6,11 +6,13 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "build": "tsc -b && vite build",
+    "build": "tsc -b && vite build && vite build -c vite.ai.config.ts",
     "preview": "vite preview",
-    "typecheck": "tsc -b --noEmit"
+    "typecheck": "tsc -b --noEmit",
+    "models": "node scripts/fetch-models.mjs"
   },
   "dependencies": {
+    "@huggingface/transformers": "4.3.0",
     "@supabase/supabase-js": "^2.117.3",
     "jszip": "^3.10.2",
     "peerjs": "^1.5.5",

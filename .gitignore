@@ -4,3 +4,6 @@ dist
 test-media
 *.tsbuildinfo
 .env.local
+# Downloaded / generated at build time (npm run models)
+public/models/
+public/vendor/

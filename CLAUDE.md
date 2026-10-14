@@ -72,8 +72,20 @@ recording line by line ("Реплика N из M": listen original, record, list
 - Adding a scene from a video (editor) or importing a bare video finds the lines by sound: `findSpeech()` tracks the
   centred speech-band level (mid minus side, 250–3400 Hz) against the scene's own quiet floor. Pauses under 0.45 s stay
   in one line, lines over 6.5 s are cut at their quietest point. "Найти реплики по звуку" re-runs it.
-- It gives timing only: no text (that needs speech recognition, not built) and roles are a guess (`dealRoles`: next
-  role after each pause of 0.6 s or more). The author checks roles and types the text.
+
+## In-browser AI (`src/ai`, `src/lib/ai.ts`)
+- Free models run on the device of whoever takes a video apart, in a Web Worker (`vendor/ai-worker.js`, separate build
+  `vite.ai.config.ts`, started through the Trusted Types policy `dubparty-ai`): WeSpeaker ResNet34 int8 (voice
+  fingerprints: who speaks, CC BY 4.0 — credited in Settings) and Whisper base int8 (text, MIT), on onnxruntime-web
+  (CPU/WASM, single thread). `@huggingface/transformers` is pinned to an exact version.
+- Models and the runtime's wasm are NOT in git: `npm run models` (CI runs it before the build) downloads them into
+  `public/models` / `public/vendor`, pinned by repo commit and SHA-256 (`scripts/fetch-models.mjs`,
+  `scripts/models.sha256.json`). The site serves them itself (works in Russia without Hugging Face). First use
+  downloads ~7 MB (voices) / ~81 MB (text) + 14 MB runtime, then the browser caches them.
+- Voices: `findSpeech()` clusters fingerprints (average linkage, similarity 0.5, at most 4 voices), pitch is the
+  fallback. Text: `transcribeLines()` runs line by line (~5 s a line on a computer), language taken from the longest
+  line, Whisper's non-speech phrases filtered; Packs shows it as a skippable step after a video, Editor has
+  "Распознать текст" (fills empty lines).
 
 ## Accounts (Supabase)
 - Project `https://xkypecdassssdrogfker.supabase.co`, publishable key in repo variables SUPABASE_URL / SUPABASE_ANON_KEY

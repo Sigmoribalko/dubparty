@@ -101,6 +101,7 @@ export function SettingsModal({ onClose }: { onClose(): void }) {
         <h4>{s.other}</h4>
         <Slider k="ui" label={s.ui} />
       </section>
+      <p className="muted fine">{t.settings.aiCredits}</p>
     </Modal>
   );
 }

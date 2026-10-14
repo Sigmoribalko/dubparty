@@ -30,6 +30,8 @@ jobs:
           node-version: 22
           cache: npm
       - run: npm ci
+      # AI models and runtime for the browser, pinned and checksum-verified (scripts/fetch-models.mjs).
+      - run: npm run models
       - run: npm run build
         env:
           # Public Supabase project settings (repository variables, set once the project exists).

@@ -1,9 +1,10 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { FileButton } from "../components/FileButton";
 import { useFileDrop } from "../components/useFileDrop";
 import { Icon } from "../components/Icon";
 import { Menu } from "../components/Menu";
 import { Modal } from "../components/Modal";
+import { transcribeLines } from "../lib/audio/transcribe";
 import { exportPack } from "../lib/pack/export";
 import { ImportError, importFiles } from "../lib/pack/import";
 import { store } from "../lib/store";
@@ -14,6 +15,7 @@ import { notify, useApp } from "../state/app";
 
 type ImportState =
   | { kind: "busy"; video: boolean }
+  | { kind: "text"; pack: Pack; done: number; total: number; download: [number, number] | null }
   | { kind: "done"; pack: Pack; video: boolean }
   | { kind: "error"; title: string; text: string; paths?: string[] };
 
@@ -32,12 +34,37 @@ export function Packs() {
     go({ name: "editor", packId: p.id });
   };
 
-  /** A single video is the quick way in: its lines and voices are found, and it can be played at once. */
+  const stopText = useRef<{ requested: boolean } | null>(null);
+
+  /** The words of the found lines, by the speech model in the browser; each text is saved as soon as it's ready. */
+  const recognize = async (pack: Pack) => {
+    const scene = pack.scenes[0];
+    const media = await store.getMedia(scene.id);
+    const stop = { requested: false };
+    stopText.current = stop;
+    setImp({ kind: "text", pack, done: 0, total: scene.lines.length, download: null });
+    try {
+      if (media) await transcribeLines(media, scene.lines, {
+        onDownload: (loaded, total) => setImp((s) => (s?.kind === "text" ? { ...s, download: [loaded, total] } : s)),
+        onLine: (id, text, done, total) => {
+          const line = scene.lines.find((l) => l.id === id);
+          if (line && text) { line.text = text; store.putPack(pack); }
+          setImp((s) => (s?.kind === "text" ? { ...s, done, total, download: null } : s));
+        },
+      }, stop);
+    } catch {
+      notify(t.importer.textFailed);
+    }
+    stopText.current = null;
+  };
+
+  /** A single video is the quick way in: its lines, voices and words are found, and it can be played at once. */
   const runImport = useCallback(async (files: File[]) => {
     const video = files.length === 1 && VIDEO_EXT.includes(extOf(files[0].name));
     setImp({ kind: "busy", video });
     try {
       const [pack] = await importFiles(files);
+      if (video && pack.scenes[0]?.lines.length) await recognize(pack);
       setImp({ kind: "done", pack, video });
       refresh();
     } catch (e) {
@@ -113,6 +140,13 @@ export function Packs() {
       {imp?.kind === "busy" && (
         <Modal title={imp.video ? t.importer.videoBusyTitle : t.importer.busyTitle}>
           <div className="row"><div className="spinner" /><span className="muted">{imp.video ? t.importer.videoBusyText : t.importer.busyText}</span></div>
+        </Modal>
+      )}
+      {imp?.kind === "text" && (
+        <Modal title={t.importer.textTitle} actions={<button onClick={() => { if (stopText.current) stopText.current.requested = true; }}>{t.tutorial.skip}</button>}>
+          <div className="row"><div className="spinner" /><span>{imp.download ? t.importer.textDownload(imp.download[0], imp.download[1]) : t.importer.textProgress(imp.done, imp.total)}</span></div>
+          <progress max={imp.download ? imp.download[1] : imp.total} value={imp.download ? imp.download[0] : imp.done} style={{ width: "100%" }} />
+          <p className="muted fine">{t.importer.textHint}</p>
         </Modal>
       )}
       {imp?.kind === "done" && (
