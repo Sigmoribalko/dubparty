@@ -311,6 +311,16 @@ button.link.on-color { color: #fff; font-weight: 700; margin-top: 4px; }
 }
 .menu-item:hover { background: var(--bg); transform: none; }
 .menu-item.danger { color: var(--rec); }
+
+/* A file dragged over the page: one big target. */
+.drop-overlay {
+  position: fixed; inset: 0; z-index: 60; display: grid; place-items: center; padding: 24px; pointer-events: none;
+  background: color-mix(in srgb, var(--bg) 82%, transparent); backdrop-filter: blur(4px);
+}
+.drop-overlay span {
+  padding: 28px 32px; border: 2.5px dashed var(--accent); border-radius: 26px; max-width: 26ch; text-align: center;
+  font: 800 clamp(1.1rem, 4vw, 1.5rem) var(--font-display); background: var(--panel);
+}
 button.icon-only { width: 36px; height: 36px; padding: 0; }
 
 /* ---------- segmented control ---------- */
@@ -423,13 +433,3 @@ button.icon-only { width: 36px; height: 36px; padding: 0; }
 
 /* Lost connection to the room: stays on top of whatever screen you're on. */
 .reconnect-banner { position: sticky; top: 8px; z-index: 30; padding-top: 8px; }
-
-/* A file dragged over the page: one big target. */
-.drop-overlay {
-  position: fixed; inset: 0; z-index: 60; display: grid; place-items: center; padding: 24px; pointer-events: none;
-  background: color-mix(in srgb, var(--bg) 82%, transparent); backdrop-filter: blur(4px);
-}
-.drop-overlay span {
-  padding: 28px 32px; border: 2.5px dashed var(--accent); border-radius: 26px; max-width: 26ch; text-align: center;
-  font: 800 clamp(1.1rem, 4vw, 1.5rem) var(--font-display); background: var(--panel);
-}
