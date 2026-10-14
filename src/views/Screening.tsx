@@ -13,6 +13,7 @@ import { hostPlayAll, hostReveal, hostToLobby, leaveRoom, onPlayAll, useRoom, vo
 import { recordWin } from "../lib/auth/auth";
 import { notify, useApp, useGame } from "../state/app";
 import { castRoles, originalDuck, effectOf, mixFor, originalMix, videoDuck } from "../state/game";
+import { saveOnboarding } from "../state/tutorial";
 
 type OnScreen = "dub" | "original" | null;
 
@@ -33,6 +34,12 @@ export function Screening() {
   const winners = snap?.winners ?? null;
   const counts = snap ? voteCounts(snap) : {};
   const myVote = snap?.votes[myId];
+  /** The tutorial's result: no room, nobody to vote, just "that's how it works" and the way on. */
+  const solo = !!game.solo;
+  useEffect(() => { if (solo) saveOnboarding({ tutorial: "done" }); }, [solo]);
+  const { touch } = useApp();
+  const retry = () => { game.lineTakes = {}; game.tracks = {}; touch(); go({ name: "record" }); };
+  const toFriends = () => { setGame(null); go({ name: "home" }); };
 
   const show = async (what: "dub" | "original", autoplay = true) => {
     const v = video.current;
@@ -103,7 +110,21 @@ export function Screening() {
         {hasOriginal && <button onClick={() => show("original")}>{t.screen.original}</button>}
       </div>
 
-      <section className="stack" aria-labelledby="best-h">
+      {solo && (
+        <section className="panel stack">
+          <div>
+            <h3>{t.tutorial.doneTitle}</h3>
+            <p className="muted">{t.tutorial.doneText}</p>
+          </div>
+          <div className="row">
+            <button className="primary" onClick={toFriends}>{t.tutorial.playFriends}</button>
+            <button onClick={retry}>{t.tutorial.retry}</button>
+            <button onClick={save}>{t.screen.saveVideo}</button>
+          </div>
+        </section>
+      )}
+
+      {!solo && <section className="stack" aria-labelledby="best-h">
         <div className="row">
           <div style={{ flex: 1 }}>
             <h3 id="best-h">{t.screen.bestVoice}</h3>
@@ -138,14 +159,16 @@ export function Screening() {
             </div>
           );
         })}
-      </section>
+      </section>}
 
-      <div className="row">
-        <button className="primary" onClick={save}>{t.screen.saveVideo}</button>
-        {isHost && <button onClick={hostToLobby}>{t.online.toScenes}</button>}
-        <div className="spacer" />
-        <button className="ghost danger" onClick={leave}>{t.online.leave}</button>
-      </div>
+      {!solo && (
+        <div className="row">
+          <button className="primary" onClick={save}>{t.screen.saveVideo}</button>
+          {isHost && <button onClick={hostToLobby}>{t.online.toScenes}</button>}
+          <div className="spacer" />
+          <button className="ghost danger" onClick={leave}>{t.online.leave}</button>
+        </div>
+      )}
 
       {exporting && (
         <ExportModal

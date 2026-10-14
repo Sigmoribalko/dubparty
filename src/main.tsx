@@ -19,10 +19,21 @@ if (import.meta.env.DEV) {
   );
 }
 
+/** The loading screen from index.html stays for a beat (so it reads as an intro, not a flicker), then fades out. */
+function hideSplash() {
+  const el = document.getElementById("splash");
+  if (!el) return;
+  setTimeout(() => {
+    el.classList.add("out");
+    setTimeout(() => el.remove(), 450);
+  }, Math.max(0, 900 - performance.now()));
+}
+
 store.init().then(() => {
   createRoot(document.getElementById("root")!).render(
     <StrictMode>
       <App />
     </StrictMode>,
   );
+  hideSplash();
 });

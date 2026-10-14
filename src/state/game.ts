@@ -27,6 +27,8 @@ export interface Game {
   myRoleId: string | null;
   /** This round's dub has been counted on the player's account. */
   dubCounted?: boolean;
+  /** Practice on this device alone (the tutorial): no room, nothing is sent or counted. */
+  solo?: boolean;
 }
 
 export async function createGame(opts: {

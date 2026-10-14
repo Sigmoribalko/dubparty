@@ -41,7 +41,7 @@ export function App() {
 
   // Warn before closing the tab with unsaved takes.
   useEffect(() => {
-    const h = (e: BeforeUnloadEvent) => { if (hasAnyRecording(useApp.getState().game)) e.preventDefault(); };
+    const h = (e: BeforeUnloadEvent) => { const g = useApp.getState().game; if (g && !g.solo && hasAnyRecording(g)) e.preventDefault(); };
     window.addEventListener("beforeunload", h);
     return () => window.removeEventListener("beforeunload", h);
   }, []);
