@@ -453,14 +453,20 @@ function ScenePicker({ snap }: { snap: Snapshot }) {
     try {
       const [p] = await importFiles(files);
       await load();
-      const sc = p?.scenes.find((x) => playableRoles(x).length >= onlinePlayers(snap).length);
-      if (p && sc) hostSelectScene(p, sc.id);
+      if (!p) return;
+      const sc = p.scenes.find((x) => playableRoles(x).length >= onlinePlayers(snap).length);
+      if (sc) hostSelectScene(p, sc.id);
+      else notify(whyNot(p));
     } catch {
       notify(t.importer.failTitle);
     } finally {
       setImporting(false);
     }
   };
+  /** Why no scene of this pack can be picked for this room (silently ignoring the choice looked broken). */
+  const whyNot = (p: Pack) => (p.scenes.some((s) => playableRoles(s).length)
+    ? t.online.packTooSmall(p.name || t.common.untitled, onlinePlayers(snap).length)
+    : t.online.packNoLines(p.name || t.common.untitled));
   const importButton = importing
     ? <div className="row"><div className="spinner" /><span className="muted fine">{t.online.importing}</span></div>
     : <FileButton className="small" multiple onFiles={runImport}>{t.online.importPack}</FileButton>;
@@ -473,16 +479,26 @@ function ScenePicker({ snap }: { snap: Snapshot }) {
     <div className="stack" style={{ gap: 10 }}>
       <label className="field">
         {t.common.pack}
-        <select value={pack?.id ?? ""} onChange={(e) => { const p = packs.find((x) => x.id === e.target.value); const sc = p?.scenes.find(fits); if (p && sc) hostSelectScene(p, sc.id); }}>
+        <select value={pack?.id ?? ""} onChange={(e) => {
+          const p = packs.find((x) => x.id === e.target.value);
+          if (!p) return;
+          const sc = p.scenes.find(fits);
+          if (sc) hostSelectScene(p, sc.id);
+          else notify(whyNot(p));
+        }}>
           {!pack && <option value="">{t.online.choosePack}</option>}
-          {packs.map((p) => <option key={p.id} value={p.id}>{p.name || t.common.untitled}</option>)}
+          {packs.map((p) => (
+            <option key={p.id} value={p.id}>
+              {(p.name || t.common.untitled) + (p.scenes.some((s) => playableRoles(s).length) ? (p.scenes.some(fits) ? "" : t.online.tooSmall(players)) : t.online.noLines)}
+            </option>
+          ))}
         </select>
       </label>
       {pack && (
         <label className="field">
           {t.common.scene}
           <select value={snap.scene?.id ?? ""} onChange={(e) => hostSelectScene(pack, e.target.value)}>
-            {pack.scenes.map((s) => <option key={s.id} value={s.id} disabled={!fits(s)}>{(s.title || t.common.scene) + (fits(s) ? "" : t.online.tooSmall(players))}</option>)}
+            {pack.scenes.map((s) => <option key={s.id} value={s.id} disabled={!fits(s)}>{(s.title || t.common.scene) + (fits(s) ? "" : playableRoles(s).length ? t.online.tooSmall(players) : t.online.noLines)}</option>)}
           </select>
         </label>
       )}
