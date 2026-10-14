@@ -144,7 +144,7 @@ export const en: Dict = {
     linesHint: "Lines are found by sound: check who is speaking and type the text. To add one by hand, pause the video where the line starts and press “Add”. The clock buttons take the time from the video.",
     autoLines: "Find lines by sound",
     autoBusy: "Looking for lines in the video…",
-    autoFound: (n: number) => `Lines found: ${n}. Check the roles and type the text.`,
+    autoFound: (n: number, voices: number) => `Lines found: ${n}, voices: ${voices}. Check the roles and type the text.`,
     autoNone: "Couldn't find the lines: speech doesn't stand out from the rest of the sound. Add them by hand.",
     autoNoAudio: "Couldn't read this video's sound. Add the lines by hand.",
     autoReplace: "Replace the current lines with the ones found by sound?",

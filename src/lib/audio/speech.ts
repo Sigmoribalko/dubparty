@@ -3,11 +3,13 @@ import { audioCtx } from "./engine";
 /*
  * Finding the lines in a raw video: where somebody speaks, by sound alone.
  *
- * It answers "when", not "what" or "who": the result is a list of time spans. The idea is the one
- * used for removing a character's voice: film dialogue sits in the centre of the stereo picture
- * and in the speech band, while music and effects are spread to the sides. So the level that is
- * tracked is the centred speech-band signal minus what the sides carry, and a span is wherever
- * that level rises clearly above the scene's own quiet floor.
+ * It answers "when" and roughly "who", not "what": the result is a list of time spans, each
+ * tagged with a voice. The idea for "when" is the one used for removing a character's voice: film
+ * dialogue sits in the centre of the stereo picture and in the speech band, while music and
+ * effects are spread to the sides. So the level that is tracked is the centred speech-band signal
+ * minus what the sides carry, and a span is wherever that level rises clearly above the scene's
+ * own quiet floor. "Who" is told by how high the voice is: spans whose pitch differs clearly
+ * are different people (a man and a woman, an adult and a child); similar voices stay together.
  */
 
 export interface SpeechSpan { start: number; end: number }
@@ -124,22 +126,108 @@ export function spansFromLevels(levels: Float32Array, duration: number): SpeechS
     .filter((s) => s.end - s.start >= 0.2);
 }
 
-/** Where people speak in this video or audio file. Null when its sound can't be read. */
-export async function findSpeech(media: Blob): Promise<SpeechSpan[] | null> {
+/* ---------- who: telling voices apart by pitch ---------- */
+
+/** Rate the pitch tracker works at: plenty for fundamentals of 70–400 Hz. */
+const PITCH_RATE = 8000;
+/** Voices whose typical pitch is closer than this (semitones) are taken for one person. */
+const VOICE_GAP = 4;
+const MAX_VOICES = 3;
+/** A "voice" that speaks less than this in total is noise or a shout, not a character. */
+const MIN_VOICE_TIME = 0.8;
+
+/** The centred signal, low-passed and thinned out to about PITCH_RATE. */
+function pitchSignal(buf: AudioBuffer): { data: Float32Array; rate: number } {
+  const step = Math.max(1, Math.round(buf.sampleRate / PITCH_RATE));
+  const left = buf.getChannelData(0), right = buf.numberOfChannels > 1 ? buf.getChannelData(1) : null;
+  const lp = new Biquad("lowpass", 900, buf.sampleRate), hp = new Biquad("highpass", 60, buf.sampleRate);
+  const data = new Float32Array(Math.floor(buf.length / step));
+  for (let i = 0, o = 0; i < buf.length; i++) {
+    const y = hp.step(lp.step(right ? (left[i] + right[i]) / 2 : left[i]));
+    if (i % step === 0 && o < data.length) data[o++] = y;
+  }
+  return { data, rate: buf.sampleRate / step };
+}
+
+/** Typical pitch of one span, in semitones above 100 Hz. Null when it isn't clearly voiced. */
+function spanPitch(sig: { data: Float32Array; rate: number }, span: SpeechSpan): number | null {
+  const { data, rate } = sig;
+  const size = Math.round(rate * 0.048), hop = Math.round(rate * 0.024);
+  const minLag = Math.floor(rate / 400), maxLag = Math.ceil(rate / 70);
+  const from = Math.max(0, Math.floor(span.start * rate)), to = Math.min(data.length - size - maxLag, Math.floor(span.end * rate));
+  const frames: Array<{ at: number; rms: number }> = [];
+  for (let at = from; at < to; at += hop) {
+    let e = 0;
+    for (let i = 0; i < size; i++) e += data[at + i] * data[at + i];
+    frames.push({ at, rms: Math.sqrt(e / size) });
+  }
+  const loud = Math.max(0, ...frames.map((f) => f.rms)) * 0.3;
+  const found: number[] = [];
+  for (const f of frames) {
+    if (f.rms < loud || f.rms < 1e-4) continue;
+    let e0 = 0;
+    for (let i = 0; i < size; i++) e0 += data[f.at + i] * data[f.at + i];
+    let best = 0;
+    const corr = new Float32Array(maxLag + 1);
+    for (let lag = minLag; lag <= maxLag; lag++) {
+      let xy = 0, e1 = 0;
+      for (let i = 0; i < size; i++) { const b = data[f.at + i + lag]; xy += data[f.at + i] * b; e1 += b * b; }
+      corr[lag] = xy / Math.sqrt(e0 * e1 + 1e-12);
+      if (corr[lag] > best) best = corr[lag];
+    }
+    if (best < 0.55) continue; // not a steady tone: a consonant, noise, several voices at once
+    // The shortest period that repeats nearly as well as the best one (longer ones are its multiples).
+    let lag = minLag;
+    while (lag < maxLag && !(corr[lag] >= best * 0.9 && corr[lag] >= corr[lag + 1])) lag++;
+    found.push(12 * Math.log2(rate / lag / 100));
+  }
+  if (found.length < 4) return null;
+  found.sort((a, b) => a - b);
+  return found[found.length >> 1];
+}
+
+/** Give every span a voice number (0, 1, …, by first appearance) from its pitch. */
+function tellVoices(buf: AudioBuffer, spans: SpeechSpan[]): { voice: number[]; voices: number } {
+  const sig = pitchSignal(buf);
+  const pitch = spans.map((s) => spanPitch(sig, s));
+  const known = spans.map((s, i) => ({ i, p: pitch[i], time: s.end - s.start })).filter((x): x is { i: number; p: number; time: number } => x.p != null).sort((a, b) => a.p - b.p);
+  const group = new Array<number>(spans.length).fill(-1);
+  if (known.length) {
+    // Cut the sorted pitches at the widest gaps (at most MAX_VOICES groups, only where the gap is real).
+    const cuts = known.slice(1).map((x, k) => ({ k: k + 1, gap: x.p - known[k].p })).filter((c) => c.gap >= VOICE_GAP).sort((a, b) => b.gap - a.gap).slice(0, MAX_VOICES - 1).map((c) => c.k).sort((a, b) => a - b);
+    let g = 0;
+    known.forEach((x, k) => { if (cuts.includes(k)) g++; group[x.i] = g; });
+    // A group that barely speaks joins the group nearest in pitch.
+    for (;;) {
+      const ids = [...new Set(group.filter((v) => v >= 0))];
+      if (ids.length < 2) break;
+      const stat = ids.map((id) => { const m = known.filter((x) => group[x.i] === id); return { id, time: m.reduce((n, x) => n + x.time, 0), p: m.reduce((n, x) => n + x.p, 0) / m.length }; });
+      const weak = stat.filter((x) => x.time < MIN_VOICE_TIME).sort((a, b) => a.time - b.time)[0];
+      if (!weak) break;
+      const near = stat.filter((x) => x.id !== weak.id).sort((a, b) => Math.abs(a.p - weak.p) - Math.abs(b.p - weak.p))[0];
+      known.forEach((x) => { if (group[x.i] === weak.id) group[x.i] = near.id; });
+    }
+  }
+  // No clear pitch (a whisper, a shout over music): assume the person who spoke just before.
+  for (let i = 0; i < group.length; i++) if (group[i] < 0) group[i] = i ? group[i - 1] : (group.find((v) => v >= 0) ?? 0);
+  const order: number[] = [];
+  const voice = group.map((id) => { if (!order.includes(id)) order.push(id); return order.indexOf(id); });
+  return { voice, voices: Math.max(1, order.length) };
+}
+
+export interface FoundSpeech {
+  /** Where somebody speaks, each with the number of the voice it sounds like. */
+  spans: Array<SpeechSpan & { voice: number }>;
+  /** How many different voices were told apart (at least 1). */
+  voices: number;
+}
+
+/** Where people speak in this video or audio file, and which voice each time. Null when its sound can't be read. */
+export async function findSpeech(media: Blob): Promise<FoundSpeech | null> {
   if (media.size > MAX_BYTES) return null;
   let buf: AudioBuffer;
   try { buf = await audioCtx().decodeAudioData(await media.arrayBuffer()); } catch { return null; }
-  return spansFromLevels(voiceLevels(buf), buf.duration);
-}
-
-/**
- * Guess who says what: with several roles, a new voice is assumed after every real pause
- * (dialogue mostly alternates). Only a starting point, the author corrects it.
- */
-export function dealRoles<T extends SpeechSpan>(spans: T[], roleIds: string[]): Array<T & { roleId: string }> {
-  let turn = 0;
-  return spans.map((s, i) => {
-    if (i && roleIds.length > 1 && s.start - spans[i - 1].end >= 0.6) turn++;
-    return { ...s, roleId: roleIds[turn % roleIds.length] ?? "" };
-  });
+  const spans = spansFromLevels(voiceLevels(buf), buf.duration);
+  const { voice, voices } = tellVoices(buf, spans);
+  return { spans: spans.map((s, i) => ({ ...s, voice: voice[i] })), voices };
 }
