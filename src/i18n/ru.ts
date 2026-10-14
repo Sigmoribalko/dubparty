@@ -460,6 +460,7 @@ export const ru = {
     forgot: "Забыли пароль?",
     noAccount: "Нет аккаунта?",
     haveAccount: "Уже есть аккаунт?",
+    badEmail: "Проверьте email: похоже, в нём опечатка.",
     codeTitle: "Подтвердите email",
     codeLead: (email: string) => `Мы отправили код на ${email}. Введите его ниже.`,
     code: "Код из письма",

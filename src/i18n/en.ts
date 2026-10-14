@@ -459,6 +459,7 @@ export const en: Dict = {
     hide: "Hide",
     forgot: "Forgot password?",
     noAccount: "No account?",
+    badEmail: "Check the email: it looks like there is a typo.",
     haveAccount: "Already have an account?",
     codeTitle: "Confirm your email",
     codeLead: (email: string) => `We sent a code to ${email}. Enter it below.`,

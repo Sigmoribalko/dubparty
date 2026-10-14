@@ -200,15 +200,15 @@ function SignIn({ busy, error, onSubmit, onSignUp, onForgot }: { busy: boolean; 
 
 function SignUp({ busy, error, onSubmit, onSignIn }: { busy: boolean; error: string | null; onSubmit(name: string, email: string, password: string): void; onSignIn(): void }) {
   const a = useT().auth;
-  const [mismatch, setMismatch] = useState(false);
+  const [problem, setProblem] = useState<string | null>(null);
   return (
-    <Form title={a.signUpTitle} lead={a.signUpLead} error={mismatch ? a.mismatch : error} busy={busy} submit={a.signUp}
+    <Form title={a.signUpTitle} lead={a.signUpLead} error={problem ?? error} busy={busy} submit={a.signUp}
       onSubmit={(f) => {
         const password = String(f.get("password"));
-        if (password !== String(f.get("password2"))) { setMismatch(true); return; }
-        setMismatch(false);
         const email = String(f.get("email")).trim();
-        if (!isEmail(email)) return;
+        if (!isEmail(email)) { setProblem(a.badEmail); return; }
+        if (password !== String(f.get("password2"))) { setProblem(a.mismatch); return; }
+        setProblem(null);
         onSubmit(String(f.get("name")).trim(), email, password);
       }}
       footer={<span className="muted">{a.haveAccount} <button type="button" className="link" onClick={onSignIn}>{a.signIn}</button></span>}

@@ -78,7 +78,8 @@ export function App() {
           <div className="panel notice row"><div className="spinner" /><span>{t.online.reconnecting}</span></div>
         </div>
       )}
-      <main className="view" key={view.name + ("packId" in view ? view.packId ?? "" : "")}>
+      {/* Keyed by mode too: "Регистрация" in the top bar must switch an open sign-in screen. */}
+      <main className="view" key={view.name + ("packId" in view ? view.packId ?? "" : "") + ("mode" in view ? view.mode ?? "" : "")}>
         {view.name === "home" && <Home />}
         {view.name === "packs" && <Packs />}
         {view.name === "editor" && <Editor packId={view.packId} />}
