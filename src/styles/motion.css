@@ -6,6 +6,20 @@
 }
 @keyframes viewIn { from { opacity: 0; transform: translateY(14px); } }
 @keyframes fadeIn { from { opacity: 0; } }
+@keyframes fadeOut { to { opacity: 0; } }
+@keyframes askIn { from { opacity: 0; transform: translateY(28px) scale(0.9); } }
+@keyframes askOut { to { opacity: 0; transform: translateY(14px) scale(0.94); } }
+@keyframes sheetIn { from { transform: translateY(100%); } }
+@keyframes sheetOut { to { transform: translateY(100%); } }
+@keyframes iconIn { from { opacity: 0; transform: scale(0.4) rotate(-16deg); } }
+@keyframes ring { from { opacity: 0.55; transform: scale(1); } to { opacity: 0; transform: scale(1.75); } }
+@keyframes doorOpen { to { transform: scaleX(0.38) skewY(-7deg); } }
+@keyframes arrIn { from { opacity: 0; transform: translateX(-7px); } }
+@keyframes arrOut { to { opacity: 0; transform: translateX(10px); } }
+@keyframes nudge { 50% { transform: translateX(2.5px); } }
+@keyframes draw { from { stroke-dashoffset: 1; } to { stroke-dashoffset: 0; } }
+@keyframes lidLift { 0%, 100% { transform: none; } 35%, 65% { transform: translate(-1px, -2.5px) rotate(-18deg); } }
+@keyframes spinOnce { from { transform: rotate(-360deg); } }
 @keyframes popIn { from { opacity: 0; transform: translateY(16px) scale(0.96); } }
 @keyframes toastIn { from { opacity: 0; transform: translate(-50%, 16px) scale(0.95); } }
 @keyframes countPop { 0% { transform: scale(1.8); opacity: 0; } 25% { transform: scale(1); opacity: 1; } 80% { opacity: 1; } 100% { transform: scale(0.7); opacity: 0; } }
@@ -44,6 +58,24 @@
   button.rec:hover:not(:disabled) { box-shadow: 0 6px 22px color-mix(in srgb, var(--rec) 45%, transparent); }
   .modal { animation: fadeIn 0.2s ease; }
   .modal > .panel { animation: popIn 0.32s cubic-bezier(0.2, 0.9, 0.3, 1.15); }
+  .modal.ask { animation: fadeIn 0.22s ease both; }
+  .modal.ask > .panel { animation: askIn 0.45s var(--ease-pop) both; }
+  .modal.ask.out { animation: fadeOut 0.19s ease forwards; }
+  .modal.ask.out > .panel { animation: askOut 0.19s ease-in forwards; }
+  .ask-panel > h3, .ask-panel > p, .ask-actions { animation: rise 0.4s var(--ease-out) both; }
+  .ask-panel > h3 { animation-delay: 0.08s; }
+  .ask-panel > p { animation-delay: 0.13s; }
+  .ask-actions { animation-delay: 0.18s; }
+  .ask-icon { animation: iconIn 0.55s var(--ease-pop) 0.05s both; }
+  .ask-icon::after { content: ""; position: absolute; inset: 0; border-radius: inherit; border: 2px solid currentColor; opacity: 0; animation: ring 0.9s var(--ease-out) 0.25s; }
+  .ask-panel .leaf { transform-origin: left center; animation: doorOpen 0.55s var(--ease-out) 0.3s both; }
+  .ask-panel.leave .arr { animation: arrIn 0.4s var(--ease-out) 0.6s both; }
+  .ask-panel.kick .arr { animation: nudge 0.5s ease-in-out 0.35s 3; }
+  .ask.out.yes .arr { animation: arrOut 0.19s ease-in forwards; }
+  .ask-panel .draw { stroke-dasharray: 1; animation: draw 0.5s var(--ease-out) 0.25s both; }
+  .ask-panel .slash { animation-delay: 0.6s; }
+  .ask-panel .lid { transform-origin: left bottom; animation: lidLift 1.1s ease-in-out 0.35s 2; }
+  .ask-panel .spin { transform-origin: center; animation: spinOnce 0.8s var(--ease-out) 0.2s both; }
   .toast { animation: toastIn 0.35s var(--ease-pop); }
   .countdown span { display: inline-block; animation: countPop 0.8s cubic-bezier(0.2, 0.9, 0.3, 1) both; }
   .stage.recording { animation: recGlow 1.6s ease-in-out infinite; }
@@ -78,4 +110,10 @@
   .mascot.talking .mouth { animation: mascotTalk 0.42s ease-in-out infinite; }
   .coach { animation: capIn 0.28s ease both; }
   button.coach-aim { animation: aimPulse 1.3s ease-in-out infinite; }
+}
+
+/* On phones dialogs are bottom sheets: the question slides up and back down. */
+@media (prefers-reduced-motion: no-preference) and (max-width: 720px) {
+  .modal.ask > .panel { animation: sheetIn 0.38s var(--ease-out) both; }
+  .modal.ask.out > .panel { animation: sheetOut 0.19s ease-in forwards; }
 }

@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
+import { ask } from "../components/Ask";
 import { FileButton } from "../components/FileButton";
 import { useFileDrop } from "../components/useFileDrop";
 import { Icon } from "../components/Icon";
@@ -81,7 +82,7 @@ export function Packs() {
   const dragging = useFileDrop(runImport);
 
   const remove = async (p: Pack) => {
-    if (!confirm(t.home.confirmDelete(p.name))) return;
+    if (!(await ask({ ...t.home.confirmDelete(p.name), kind: "delete", danger: true }))) return;
     await store.deletePack(p);
     refresh();
   };

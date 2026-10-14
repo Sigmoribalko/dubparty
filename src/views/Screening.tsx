@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
+import { askLeave } from "../components/Ask";
 import { Band } from "../components/Band";
 import { confetti } from "../components/confetti";
 import { Modal } from "../components/Modal";
@@ -85,8 +86,8 @@ export function Screening() {
     setExporting(true);
   };
 
-  const leave = () => {
-    if (!confirm(t.online.leaveConfirm)) return;
+  const leave = async () => {
+    if (!(await askLeave())) return;
     leaveRoom();
     setGame(null);
     go({ name: "home" });
