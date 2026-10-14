@@ -20,6 +20,10 @@ const MAX_BYTES = 300 * 1024 * 1024;
 /** Pauses shorter than this stay inside one line (a comma is a pause too; a change of speaker is usually longer). */
 const JOIN_GAP = 0.45;
 const MIN_LINE = 0.3;
+/** A shorter sound this close to a line is part of it. */
+const NEAR_WORD = 0.7;
+/** Shorter than this and on its own: a click, not a word. */
+const MIN_WORD = 0.18;
 /** A line longer than this is cut at its quietest moment: nobody can dub ten seconds in one breath. */
 const MAX_LINE = 6.5;
 const PAD_BEFORE = 0.06;
@@ -99,13 +103,23 @@ export function spansFromLevels(levels: Float32Array, duration: number): SpeechS
     if (on && from < 0) from = i;
     if (!on && from >= 0) { spans.push({ start: from * FRAME, end: i * FRAME }); from = -1; }
   }
-  // Short pauses belong to the same line; blips are not lines.
+  // Short pauses belong to the same line.
   spans = spans.reduce<SpeechSpan[]>((acc, s) => {
     const prev = acc[acc.length - 1];
     if (prev && s.start - prev.end <= JOIN_GAP) prev.end = s.end;
     else acc.push({ ...s });
     return acc;
-  }, []).filter((s) => s.end - s.start >= MIN_LINE);
+  }, []);
+  // A very short sound is a word ("Fine.") when a line follows or precedes it closely: it joins that
+  // line. Alone, it is a word only if it isn't a mere click.
+  for (let i = 0; i < spans.length;) {
+    const s = spans[i], prev = spans[i - 1], next = spans[i + 1];
+    if (s.end - s.start >= MIN_LINE) { i++; continue; }
+    if (next && next.start - s.end <= NEAR_WORD) { next.start = s.start; spans.splice(i, 1); }
+    else if (prev && s.start - prev.end <= NEAR_WORD) { prev.end = s.end; spans.splice(i, 1); }
+    else if (s.end - s.start < MIN_WORD) spans.splice(i, 1);
+    else i++;
+  }
 
   const split = (s: SpeechSpan): SpeechSpan[] => {
     if (s.end - s.start <= MAX_LINE) return [s];
