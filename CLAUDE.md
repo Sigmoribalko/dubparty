@@ -68,6 +68,13 @@ recording line by line ("Реплика N из M": listen original, record, list
 - `src/i18n/{ru,en}.ts` — every UI string. Russian is the default language.
 - Packs and media live in the browser (IndexedDB, `src/lib/store.ts`); only the room host needs the pack.
 
+## Editor: lines from a raw video (`src/lib/audio/speech.ts`)
+- Adding a scene from a video (editor) or importing a bare video finds the lines by sound: `findSpeech()` tracks the
+  centred speech-band level (mid minus side, 250–3400 Hz) against the scene's own quiet floor. Pauses under 0.45 s stay
+  in one line, lines over 6.5 s are cut at their quietest point. "Найти реплики по звуку" re-runs it.
+- It gives timing only: no text (that needs speech recognition, not built) and roles are a guess (`dealRoles`: next
+  role after each pause of 0.6 s or more). The author checks roles and types the text.
+
 ## Accounts (Supabase)
 - Project `https://xkypecdassssdrogfker.supabase.co`, publishable key in repo variables SUPABASE_URL / SUPABASE_ANON_KEY
   (CI injects them as VITE_SUPABASE_*; locally use `.env.local`, git-ignored). Never use or ask for the secret key.

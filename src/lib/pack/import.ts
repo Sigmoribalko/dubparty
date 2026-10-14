@@ -1,5 +1,6 @@
 import JSZip from "jszip";
 import { t } from "../../i18n";
+import { findSpeech } from "../audio/speech";
 import { store } from "../store";
 import type { Line, Pack, Role, Scene } from "../types";
 import { AUDIO_EXT, MIME, VIDEO_EXT, baseOf, colorFor, dirOf, extOf, safeColor, stemOf, uid, withMime } from "../util";
@@ -142,6 +143,12 @@ async function readSceneDir(dir: string, es: Entry[]): Promise<{ scene: Scene; a
         if (ls?.length) { raw.push(...ls); break; }
       } catch { /* not JSON we understand */ }
     }
+  }
+
+  // Just a video, nothing describing its lines: find them by ear, one role per voice heard (no text).
+  if (!raw.length) {
+    const found = await findSpeech(await video.blob()).catch(() => null);
+    for (const sp of found?.spans ?? []) raw.push({ start: sp.start, end: sp.end, role: t().editor.defaultRole(sp.voice + 1), text: "" });
   }
 
   raw.sort((a, b) => a.start - b.start);

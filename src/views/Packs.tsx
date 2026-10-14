@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 import { FileButton } from "../components/FileButton";
+import { useFileDrop } from "../components/useFileDrop";
 import { Icon } from "../components/Icon";
 import { Menu } from "../components/Menu";
 import { Modal } from "../components/Modal";
@@ -7,13 +8,13 @@ import { exportPack } from "../lib/pack/export";
 import { ImportError, importFiles } from "../lib/pack/import";
 import { store } from "../lib/store";
 import type { Pack } from "../lib/types";
-import { uid } from "../lib/util";
+import { extOf, uid, VIDEO_EXT } from "../lib/util";
 import { useT, type Dict } from "../i18n";
 import { notify, useApp } from "../state/app";
 
 type ImportState =
-  | { kind: "busy" }
-  | { kind: "done"; pack: Pack }
+  | { kind: "busy"; video: boolean }
+  | { kind: "done"; pack: Pack; video: boolean }
   | { kind: "error"; title: string; text: string; paths?: string[] };
 
 export function Packs() {
@@ -31,11 +32,13 @@ export function Packs() {
     go({ name: "editor", packId: p.id });
   };
 
-  const runImport = async (files: File[]) => {
-    setImp({ kind: "busy" });
+  /** A single video is the quick way in: its lines and voices are found, and it can be played at once. */
+  const runImport = useCallback(async (files: File[]) => {
+    const video = files.length === 1 && VIDEO_EXT.includes(extOf(files[0].name));
+    setImp({ kind: "busy", video });
     try {
       const [pack] = await importFiles(files);
-      setImp({ kind: "done", pack });
+      setImp({ kind: "done", pack, video });
       refresh();
     } catch (e) {
       const m = t.importer;
@@ -47,7 +50,8 @@ export function Packs() {
         setImp({ kind: "error", title: m.failTitle, text: m.failText });
       }
     }
-  };
+  }, [refresh, t]);
+  const dragging = useFileDrop(runImport);
 
   const remove = async (p: Pack) => {
     if (!confirm(t.home.confirmDelete(p.name))) return;
@@ -70,11 +74,12 @@ export function Packs() {
           <p className="muted">{t.packs.lead}</p>
         </div>
         <div className="row">
-          <button onClick={newPack}><Icon name="plus" />{t.packs.newPack}</button>
-          <Menu className="primary" label={<><Icon name="upload" />{t.packs.import}</>}>
+          <FileButton className="btn primary" accept="video/*,.mkv,.ogv,.mov" onFiles={runImport}><Icon name="upload" />{t.packs.dropVideo}</FileButton>
+          <Menu label={<>{t.packs.import}</>}>
             <FileButton className="menu-item" multiple onFiles={runImport}>{t.home.importFiles}</FileButton>
             <FileButton className="menu-item" directory onFiles={runImport}>{t.home.importFolder}</FileButton>
           </Menu>
+          <button onClick={newPack}><Icon name="plus" />{t.packs.newPack}</button>
         </div>
       </div>
 
@@ -104,12 +109,19 @@ export function Packs() {
         ))}
       </div>
 
+      {dragging && <div className="drop-overlay" aria-hidden="true"><span>{t.packs.dropHere}</span></div>}
       {imp?.kind === "busy" && (
-        <Modal title={t.importer.busyTitle}>
-          <div className="row"><div className="spinner" /><span className="muted">{t.importer.busyText}</span></div>
+        <Modal title={imp.video ? t.importer.videoBusyTitle : t.importer.busyTitle}>
+          <div className="row"><div className="spinner" /><span className="muted">{imp.video ? t.importer.videoBusyText : t.importer.busyText}</span></div>
         </Modal>
       )}
-      {imp?.kind === "done" && <ImportDone t={t} pack={imp.pack} onClose={() => setImp(null)} onPlay={() => go({ name: "online", intent: "create", packId: imp.pack.id })} />}
+      {imp?.kind === "done" && (
+        <ImportDone
+          t={t} pack={imp.pack} video={imp.video} onClose={() => setImp(null)}
+          onEdit={() => go({ name: "editor", packId: imp.pack.id })}
+          onPlay={() => go({ name: "online", intent: "create", packId: imp.pack.id })}
+        />
+      )}
       {imp?.kind === "error" && (
         <Modal
           title={imp.title}
@@ -127,14 +139,25 @@ export function Packs() {
   );
 }
 
-function ImportDone({ t, pack, onClose, onPlay }: { t: Dict; pack: Pack; onClose(): void; onPlay(): void }) {
+function ImportDone({ t, pack, video, onClose, onEdit, onPlay }: { t: Dict; pack: Pack; video: boolean; onClose(): void; onEdit(): void; onPlay(): void }) {
   const lines = pack.scenes.reduce((n, s) => n + s.lines.length, 0);
   const noLines = pack.scenes.filter((s) => !s.lines.length).length;
   const ogv = pack.scenes.some((s) => s.ext === "ogv");
+  const roles = pack.scenes[0]?.roles.length ?? 0;
   return (
-    <Modal title={t.importer.doneTitle(pack.name)} onClose={onClose} actions={<><button onClick={onClose}>{t.common.close}</button><button className="primary" onClick={onPlay}>{t.common.play}</button></>}>
-      <p>{t.importer.doneStats(pack.scenes.length, lines, pack.scenes.some((s) => s.bg))}</p>
-      {noLines > 0 && <p className="muted">{t.importer.noLines(noLines === pack.scenes.length)}</p>}
+    <Modal
+      title={video ? t.importer.videoDoneTitle : t.importer.doneTitle(pack.name)}
+      onClose={onClose}
+      actions={<><button onClick={video ? onEdit : onClose}>{video ? t.common.edit : t.common.close}</button><button className="primary" onClick={onPlay}>{t.common.play}</button></>}
+    >
+      {video ? (
+        <p>{lines ? t.importer.videoDone(lines, roles) : t.importer.videoNoLines}</p>
+      ) : (
+        <>
+          <p>{t.importer.doneStats(pack.scenes.length, lines, pack.scenes.some((s) => s.bg))}</p>
+          {noLines > 0 && <p className="muted">{t.importer.noLines(noLines === pack.scenes.length)}</p>}
+        </>
+      )}
       {ogv && <p className="muted">{t.importer.ogv}</p>}
     </Modal>
   );
