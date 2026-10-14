@@ -1,4 +1,5 @@
 import { useEffect } from "react";
+import { Asker, askLeave } from "./components/Ask";
 import { Icon } from "./components/Icon";
 import { SettingsModal } from "./components/SettingsModal";
 import { Toaster } from "./components/Toast";
@@ -47,9 +48,9 @@ export function App() {
   }, []);
 
   /** Navigating away from a room asks first. */
-  const navigate = (to: View) => {
+  const navigate = async (to: View) => {
     if (useRoom.getState().status === "open") {
-      if (!confirm(t.online.leaveConfirm)) return;
+      if (!(await askLeave())) return;
       leaveRoom();
       useApp.getState().setGame(null);
     }
@@ -104,6 +105,7 @@ export function App() {
 
       {settingsOpen && <SettingsModal onClose={() => setSettingsOpen(false)} />}
       <Toaster />
+      <Asker />
     </div>
   );
 }

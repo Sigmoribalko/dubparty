@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
+import { ask } from "../components/Ask";
 import { Band } from "../components/Band";
 import { FileButton } from "../components/FileButton";
 import { VideoErrorModal } from "../components/VideoErrorModal";
@@ -112,7 +113,7 @@ export function Editor({ packId }: { packId: string }) {
           scene={scene}
           update={(fn, immediate) => mutate((d) => { const s = d.scenes.find((x) => x.id === scene.id); if (s) fn(s); }, immediate)}
           onDelete={async () => {
-            if (!confirm(t.editor.confirmDeleteScene)) return;
+            if (!(await ask({ ...t.editor.confirmDeleteScene, kind: "delete", danger: true }))) return;
             for (const k of sceneMediaKeys(scene)) await store.deleteMedia(k);
             const rest = pack.scenes.filter((s) => s.id !== scene.id);
             mutate((d) => { d.scenes = d.scenes.filter((s) => s.id !== scene.id); }, true);
@@ -151,7 +152,7 @@ function SceneEditor({ scene, update, onDelete }: SceneEditorProps) {
     if (textJob || !scene.lines.length) return;
     let target = scene.lines.filter((l) => !l.text.trim());
     if (!target.length) {
-      if (!confirm(t.editor.textReplace)) return;
+      if (!(await ask({ ...t.editor.textReplace, kind: "redo" }))) return;
       target = scene.lines;
     }
     const media = await store.getMedia(scene.id);
@@ -177,7 +178,7 @@ function SceneEditor({ scene, update, onDelete }: SceneEditorProps) {
 
   const autoLines = async () => {
     if (detecting) return;
-    if (scene.lines.length && !confirm(t.editor.autoReplace)) return;
+    if (scene.lines.length && !(await ask({ ...t.editor.autoReplace, kind: "redo" }))) return;
     setDetecting(true);
     const found = await detectLines(scene, t.editor.defaultRole);
     setDetecting(false);
@@ -267,8 +268,8 @@ function SceneEditor({ scene, update, onDelete }: SceneEditorProps) {
                   {r.name}
                   <button
                     aria-label={t.editor.deleteRole(r.name)}
-                    onClick={() => {
-                      if (scene.lines.some((l) => l.roleId === r.id) && !confirm(t.editor.confirmDeleteRole)) return;
+                    onClick={async () => {
+                      if (scene.lines.some((l) => l.roleId === r.id) && !(await ask({ ...t.editor.confirmDeleteRole, kind: "delete", danger: true }))) return;
                       update((s) => { s.roles = s.roles.filter((x) => x.id !== r.id); s.lines = s.lines.filter((l) => l.roleId !== r.id); });
                     }}
                   >✕</button>

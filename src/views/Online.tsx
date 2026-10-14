@@ -8,6 +8,7 @@ import {
   leaveRoom, normalizeCode, onlinePlayers, pickRole, playersNeeded, randomizeRoles, useRoom, type Player, type Snapshot,
 } from "../net/room";
 import { playableRoles } from "../state/game";
+import { ask, askLeave } from "../components/Ask";
 import { FileButton } from "../components/FileButton";
 import { Menu } from "../components/Menu";
 import { Modal } from "../components/Modal";
@@ -272,10 +273,9 @@ function Lobby({ snap }: { snap: Snapshot }) {
 }
 
 function useLeave() {
-  const t = useT();
   const go = useApp((s) => s.go);
-  return () => {
-    if (!confirm(t.online.leaveConfirm)) return;
+  return async () => {
+    if (!(await askLeave())) return;
     leaveRoom();
     useApp.getState().setGame(null);
     go({ name: "home" });
@@ -389,8 +389,8 @@ function KickMenu({ p }: { p: Player }) {
   const t = useT();
   return (
     <Menu label="⋯" className="small ghost icon-only" ariaLabel={t.online.playerActions(p.name)}>
-      <button role="menuitem" className="menu-item" onClick={() => { if (confirm(t.online.kickConfirm(p.name))) hostKick(p.id); }}>{t.online.kick}</button>
-      <button role="menuitem" className="menu-item danger" onClick={() => { if (confirm(t.online.banConfirm(p.name))) hostKick(p.id, true); }}>{t.online.ban}</button>
+      <button role="menuitem" className="menu-item" onClick={async () => { if (await ask({ ...t.online.kickConfirm(p.name), kind: "kick" })) hostKick(p.id); }}>{t.online.kick}</button>
+      <button role="menuitem" className="menu-item danger" onClick={async () => { if (await ask({ ...t.online.banConfirm(p.name), kind: "ban", danger: true })) hostKick(p.id, true); }}>{t.online.ban}</button>
     </Menu>
   );
 }
