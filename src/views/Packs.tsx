@@ -179,11 +179,14 @@ function ImportDone({ t, pack, video, onClose, onEdit, onPlay }: { t: Dict; pack
   const noLines = pack.scenes.filter((s) => !s.lines.length).length;
   const ogv = pack.scenes.some((s) => s.ext === "ogv");
   const roles = pack.scenes[0]?.roles.length ?? 0;
+  const playable = lines > 0;
   return (
     <Modal
-      title={video ? t.importer.videoDoneTitle : t.importer.doneTitle(pack.name)}
+      title={video && playable ? t.importer.videoDoneTitle : video ? t.importer.videoNoLinesTitle : t.importer.doneTitle(pack.name)}
       onClose={onClose}
-      actions={<><button onClick={video ? onEdit : onClose}>{video ? t.common.edit : t.common.close}</button><button className="primary" onClick={onPlay}>{t.common.play}</button></>}
+      actions={playable
+        ? <><button onClick={video ? onEdit : onClose}>{video ? t.common.edit : t.common.close}</button><button className="primary" onClick={onPlay}>{t.common.play}</button></>
+        : <><button onClick={onClose}>{t.common.close}</button><button className="primary" onClick={onEdit}>{t.common.edit}</button></>}
     >
       {video ? (
         <p>{lines ? t.importer.videoDone(lines, roles) : t.importer.videoNoLines}</p>
