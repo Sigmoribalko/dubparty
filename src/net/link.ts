@@ -14,8 +14,20 @@ const HIGH_WATER = 4 * 1024 * 1024;
 const LOW_WATER = 512 * 1024;
 /** Anything bigger than this from a peer is dropped (a scene video is well under it). */
 const MAX_FILE = 512 * 1024 * 1024;
-/** Peers are strangers: only media types reach blob URLs, never something a browser would render as a page. */
-const SAFE_TYPE = /^(audio|video|image)\/[a-z0-9.+-]+$/i;
+/**
+ * Peers are strangers: only sound and video reach blob URLs, never something a browser would
+ * render as a page or run (an SVG "image" can carry script). The game uses no other files.
+ */
+const SAFE_TYPE = /^(audio|video)\/[a-z0-9.+-]+$/i;
+/** Files being received at once from one peer: more is a peer trying to fill our memory. */
+const MAX_INCOMING = 2;
+/** A control message is small; the biggest is the host's room state with the scene's lines. */
+const MAX_MESSAGE = 2 * 1024 * 1024;
+/** Control messages per second a peer may send on average (bursts up to BURST), so one can't flood the other. */
+const RATE = 60;
+const BURST = 240;
+/** A peer that keeps flooding after being throttled is cut off. */
+const MAX_DROPPED = 2000;
 
 export type Json = Record<string, unknown> & { t: string };
 
@@ -41,8 +53,13 @@ export class Link {
   onFile: (meta: FileMeta, blob: Blob) => void = () => {};
   onFileProgress: (meta: FileMeta, received: number, total: number) => void = () => {};
   onClose: () => void = () => {};
+  /** Decides at "file-begin" whether to take a file at all, so an unwanted one is never buffered. */
+  acceptFile: (meta: FileMeta, size: number) => boolean = () => true;
 
   private incoming = new Map<string, Incoming>();
+  private tokens = BURST;
+  private refilled = Date.now();
+  private dropped = 0;
   /** Files go out one at a time so progress is meaningful and memory stays flat. */
   private queue: Promise<void> = Promise.resolve();
 
@@ -99,15 +116,27 @@ export class Link {
     });
   }
 
+  /** Token bucket for control messages. File frames are not counted: they are paced by the sender's buffer. */
+  private allow(): boolean {
+    const now = Date.now();
+    this.tokens = Math.min(BURST, this.tokens + ((now - this.refilled) / 1000) * RATE);
+    this.refilled = now;
+    if (this.tokens >= 1) { this.tokens -= 1; return true; }
+    if (++this.dropped > MAX_DROPPED) this.close();
+    return false;
+  }
+
   private receive(data: unknown) {
     if (typeof data === "string") {
+      if (data.length > MAX_MESSAGE || !this.allow()) return;
       let msg: Json;
       try { msg = JSON.parse(data) as Json; } catch { return; }
       if (!msg || typeof msg !== "object" || typeof msg.t !== "string") return;
       if (msg.t === "file-begin") {
         const size = Number(msg.size);
         const meta = msg.meta as FileMeta;
-        if (!Number.isSafeInteger(size) || size < 0 || size > MAX_FILE || !meta || typeof meta !== "object") return;
+        if (!Number.isSafeInteger(size) || size < 0 || size > MAX_FILE || !meta || typeof meta !== "object" || Array.isArray(meta)) return;
+        if (this.incoming.size >= MAX_INCOMING || !this.acceptFile(meta, size)) return;
         const type = String(msg.type || "");
         this.incoming.set(String(msg.id), { meta, size, type: SAFE_TYPE.test(type) ? type : "", parts: [], received: 0 });
       } else if (msg.t === "file-end") {

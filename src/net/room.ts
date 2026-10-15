@@ -7,7 +7,7 @@ import { decodeBlob } from "../lib/audio/engine";
 import { sceneMediaKeys, store } from "../lib/store";
 import { playableRoles } from "../state/game";
 import type { Pack, RecordedTrack, Scene } from "../lib/types";
-import { uid } from "../lib/util";
+import { cleanText, uid } from "../lib/util";
 import { Link, type FileMeta, type Json } from "./link";
 
 /*
@@ -153,7 +153,7 @@ const PEER_PREFIX = "dubbo-room-";
 export const PUBLIC_PREFIX = "dubbo-v1-pub-";
 export const PUBLIC_SLOTS = 40;
 const CODE_CHARS = "ABCDEFGHJKMNPQRSTUVWXYZ23456789";
-const newCode = () => Array.from({ length: 5 }, () => CODE_CHARS[Math.floor(Math.random() * CODE_CHARS.length)]).join("");
+const newCode = () => Array.from(crypto.getRandomValues(new Uint32Array(5)), (n) => CODE_CHARS[n % CODE_CHARS.length]).join("");
 export const normalizeCode = (s: string) => s.toUpperCase().replace(/[^A-Z0-9]/g, "").slice(0, 5);
 
 const PEER_OPTIONS = {
@@ -286,6 +286,8 @@ export function hostUnban(banId: string) {
 function hostAccept(conn: DataConnection) {
   const link = new Link(conn);
   link.onMessage = (msg) => hostHandle(link, msg);
+  // A guest sends only its own recordings, and only after being let in: anything else isn't even buffered.
+  link.acceptFile = (meta, size) => guests.get(link.peer) === link && (meta.kind === "line" ? size <= MAX_LINE : meta.kind === "take" && size <= MAX_TAKE);
   link.onFile = (meta, blob) => hostHandleFile(link, meta, blob);
   link.onClose = () => {
     if (!guests.has(link.peer)) return; // a rejected visitor
@@ -325,7 +327,7 @@ function hostHandle(link: Link, msg: Json) {
       if (back) { const stale = guests.get(back.id); guests.delete(back.id); stale?.close(); }
       // Never let a second tab of the same browser steal a seat that's still in use.
       if (back || !prevId || !cur.players.some((p) => p.id === prevId && p.online)) keys.set(key, id);
-      const name = String(msg.name || "").slice(0, 30) || t().online.guest;
+      const name = cleanText(msg.name, 30) || t().online.guest;
       hostUpdate((s) => {
         if (back) {
           const p = s.players.find((x) => x.id === back.id);
@@ -345,11 +347,12 @@ function hostHandle(link: Link, msg: Json) {
       break;
     }
     case "need": {
-      // Only the current scene's media, never other packs in the host's library.
+      // Only to players who were let in (not a refused or banned visitor), and only the current
+      // scene's media, never other packs in the host's library.
       const scene = useRoom.getState().snap?.scene;
-      if (!scene || !Array.isArray(msg.keys)) break;
+      if (!scene || !Array.isArray(msg.keys) || guests.get(id) !== link) break;
       const allowed = new Set(sceneMediaKeys(scene));
-      sendSceneMedia(link, [...new Set(msg.keys.map(String))].filter((k) => allowed.has(k)));
+      serveMedia(link, [...new Set(msg.keys.slice(0, 64).map(String))].filter((k) => allowed.has(k)));
       break;
     }
     case "progress":
@@ -515,6 +518,26 @@ async function sendSceneOffer(link: Link, snap: Snapshot) {
     if (b) files.push({ key, size: b.size });
   }
   link.send({ t: "scene", pack: snap.pack, scene, files });
+}
+
+/**
+ * Scene media being sent to each guest. Asking again while a send is running doesn't start another
+ * upload of the same video (a guest could make the host send it over and over); the latest request
+ * is served when the current one is done.
+ */
+const mediaJobs = new WeakMap<Link, { next: string[] | null }>();
+function serveMedia(link: Link, keys: string[]) {
+  const job = mediaJobs.get(link);
+  if (job) { job.next = keys; return; }
+  const state = { next: null as string[] | null };
+  mediaJobs.set(link, state);
+  const run = async (k: string[]): Promise<void> => {
+    await sendSceneMedia(link, k);
+    const more = state.next;
+    state.next = null;
+    if (more && link.conn.open) return run(more);
+  };
+  run(keys).finally(() => mediaJobs.delete(link));
 }
 
 async function sendSceneMedia(link: Link, keys: string[]) {
@@ -798,6 +821,8 @@ export function joinRoom(code: string, name: string) {
     const openTimer = setTimeout(() => { if (hostLink === link && !conn.open) lostHost(); }, OPEN_TIMEOUT);
     conn.on("open", () => { clearTimeout(openTimer); link.send({ t: "hello", name, key }); });
     link.onMessage = (msg) => { clearTimeout(timeout); guestHandle(msg); };
+    // From the host: only the scene files this guest asked for, or a recording of the round.
+    link.acceptFile = (meta, size) => (meta.kind === "media" ? !!download?.waiting.has(String(meta.key)) : meta.kind === "take" && size <= MAX_TAKE);
     link.onFile = (meta, blob) => guestHandleFile(meta, blob);
     link.onFileProgress = (meta, received) => {
       if (meta.kind !== "media" || !download) return;
@@ -890,7 +915,7 @@ function cleanSnapshot(v: unknown): Snapshot | null {
     public: !!s.public,
     players: s.players.slice(0, 64).filter((p) => p && typeof p === "object").map((p) => ({
       id: str(p.id, 64),
-      name: str(p.name, 30),
+      name: cleanText(p.name, 30),
       host: !!p.host,
       roleId: p.roleId == null ? null : str(p.roleId, 64),
       ready: !!p.ready,

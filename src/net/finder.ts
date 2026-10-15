@@ -1,4 +1,5 @@
 import Peer from "peerjs";
+import { cleanText } from "../lib/util";
 import { normalizeCode, PUBLIC_PREFIX, PUBLIC_SLOTS, type PublicRoomInfo } from "./room";
 
 /*
@@ -18,7 +19,7 @@ export interface FoundRoom extends PublicRoomInfo {
 function clean(v: unknown): PublicRoomInfo | null {
   const r = v as Record<string, unknown>;
   if (!r || typeof r !== "object" || r.v !== 1) return null;
-  const str = (x: unknown, n: number) => String(x ?? "").slice(0, n);
+  const str = cleanText;
   const num = (x: unknown) => { const n = Math.floor(Number(x)); return Number.isFinite(n) ? Math.max(0, Math.min(99, n)) : 0; };
   const phase = r.phase === "lobby" || r.phase === "casting" || r.phase === "recording" || r.phase === "screening" ? r.phase : null;
   const code = normalizeCode(str(r.code, 10));

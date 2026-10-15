@@ -1,4 +1,3 @@
-import workletSource from "./pitch-shifter.worklet.js?raw";
 import { settings, useSettings, type Settings } from "../../state/settings";
 import { buildEffect, type EffectChain, type EffectId } from "./effects";
 
@@ -16,10 +15,8 @@ export function audioCtx(): AudioContext {
 
 /** Load the pitch-shifter worklet into a context (once per context). */
 export function loadWorklets(c: BaseAudioContext = audioCtx()): Promise<void> {
-  const load = () => {
-    const url = URL.createObjectURL(new Blob([workletSource], { type: "text/javascript" }));
-    return c.audioWorklet.addModule(url).finally(() => URL.revokeObjectURL(url));
-  };
+  // A file of our own site (public/), not a blob built from a string: the page's CSP runs scripts only from 'self'.
+  const load = () => c.audioWorklet.addModule(new URL("pitch-shifter.worklet.js", document.baseURI).href);
   if (c !== ctx) return load();
   return (workletReady ??= load());
 }
