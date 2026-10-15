@@ -103,6 +103,11 @@ recording line by line ("Реплика N из M": listen original, record, list
   the role owner, votes/picks only for real roles; guests accept only media keys the scene uses.
 - Build injects a CSP `<meta>` with the hash of the inlined app script (`vite.config.ts`, plugin `dubparty-csp`).
   New external hosts (APIs, CDNs) must be added to its `connect-src`/`script-src` or they will be blocked.
+- CSP has no blob:/third-party scripts: the pitch-shift worklet is `public/pitch-shifter.worklet.js`, fonts are self-hosted
+  (`public/fonts`, `src/styles/fonts.css`, OFL). `main.tsx` refuses to run inside a foreign frame (clickjacking).
+- `Link` (`src/net/link.ts`): audio/video blob types only, ≤2 files in flight, `acceptFile` decides before buffering
+  (host: only let-in guests' takes/lines; guest: only requested media/takes), control messages rate-limited.
+  Names from peers go through `cleanText()` (no invisible/bidi characters). CI installs with `npm ci --ignore-scripts`.
 
 ## Preferences learned
 - Online-only game, one format (whole group dubs a scene, vote for best voice). No local single-device mode, no team mode.

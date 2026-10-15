@@ -27,11 +27,13 @@ function csp(): Plugin {
       const hashes = await Promise.all(scripts.map(async (m) => `'sha256-${await sha256(m[1])}'`));
       const policy = [
         "default-src 'self'",
-        // blob: is the pitch-shift AudioWorklet, built from a string at runtime.
-        `script-src 'self' ${hashes.join(" ")} blob:`,
-        "worker-src 'self' blob:",
-        "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
-        "font-src 'self' https://fonts.gstatic.com",
+        // Scripts: our own files (AI worker, pitch-shift worklet) and the hashed app script. No blob:, no other host.
+        `script-src 'self' ${hashes.join(" ")}`,
+        "worker-src 'self'",
+        "style-src 'self' 'unsafe-inline'",
+        "font-src 'self'",
+        "frame-src 'none'",
+        "manifest-src 'self'",
         "img-src 'self' data: blob:",
         "media-src 'self' data: blob:",
         `connect-src 'self' https://0.peerjs.com wss://0.peerjs.com${supabase ? ` https://${supabase} wss://${supabase}` : ""}`,
@@ -52,8 +54,8 @@ function csp(): Plugin {
   };
 }
 
-// `npm run build` produces a single self-contained dist/index.html that opens
-// straight from disk (file://) — handy for sharing the game as one file.
+// `npm run build` produces dist/index.html with the app inlined, plus the site's own files from public/
+// (fonts, the pitch-shift worklet, AI worker and models).
 export default defineConfig({
   plugins: [react(), viteSingleFile(), csp()],
   // Same runtime as the separate AI build (vite.ai.config.ts), for development where src/ai is imported directly.

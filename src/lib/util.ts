@@ -1,6 +1,14 @@
 export const uid = (): string =>
   Math.random().toString(36).slice(2, 10) + Date.now().toString(36).slice(-4);
 
+/**
+ * Text from strangers (player names, room titles): no control, invisible or text-direction
+ * characters, which can make one name pass for another ("Ведущий") or hide one entirely.
+ */
+const INVISIBLE = /[\u0000-\u001f\u007f-\u009f\u00ad\u034f\u061c\u115f\u1160\u17b4\u17b5\u180b-\u180e\u200b-\u200f\u202a-\u202e\u2060-\u206f\u3164\ufe00-\ufe0f\ufeff\uffa0\ufff0-\ufffb]/g;
+export const cleanText = (x: unknown, max: number): string =>
+  [...String(x ?? "").replace(INVISIBLE, "").replace(/\s+/g, " ").trim()].slice(0, max).join("");
+
 export const ROLE_COLORS = ["#f2a516", "#4cc9a6", "#ff7b95", "#ffb3c7", "#c08bff", "#ffd84d", "#8ee06b", "#ff9d5c"];
 export const colorFor = (i: number) => ROLE_COLORS[i % ROLE_COLORS.length];
 

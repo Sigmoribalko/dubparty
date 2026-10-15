@@ -4,6 +4,7 @@ import { App } from "./App";
 import { initAuth } from "./lib/auth/auth";
 import { store } from "./lib/store";
 import { notify } from "./state/app";
+import "./styles/fonts.css";
 import "./styles/tokens.css";
 import "./styles/base.css";
 import "./styles/components.css";
@@ -29,7 +30,28 @@ function hideSplash() {
   }, Math.max(0, 900 - performance.now()));
 }
 
-store.init().then(() => {
+/**
+ * Clickjacking: another site could load DubParty in an invisible frame and trick people into
+ * clicking "Забанить" or "Удалить". GitHub Pages can't send frame-ancestors, so the page refuses
+ * to run inside someone else's frame and offers a link to open it properly.
+ */
+function framedByStranger(): boolean {
+  if (window.top === window.self) return false;
+  try { return window.top!.location.origin !== location.origin; } catch { return true; }
+}
+
+if (framedByStranger()) {
+  document.getElementById("splash")?.remove();
+  const root = document.getElementById("root")!;
+  root.replaceChildren();
+  const a = document.createElement("a");
+  a.href = location.origin + "/";
+  a.target = "_top";
+  a.rel = "noopener";
+  a.textContent = "Открыть DubParty";
+  a.style.cssText = "display:block;margin:40px auto;text-align:center;font:600 18px system-ui;color:inherit";
+  root.append(a);
+} else store.init().then(() => {
   createRoot(document.getElementById("root")!).render(
     <StrictMode>
       <App />
