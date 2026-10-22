@@ -1,4 +1,5 @@
-import Peer, { type DataConnection } from "peerjs";
+import type Peer from "peerjs";
+import type { DataConnection } from "peerjs";
 import { create } from "zustand";
 import { t } from "../i18n";
 import { composeLines } from "../lib/audio/compose";
@@ -84,6 +85,20 @@ const setRoom = (patch: Partial<RoomState>) => useRoom.setState(patch);
 /* ---------- shared module state ---------- */
 
 let peer: Peer | null = null;
+
+/** PeerJS (~90 KB) isn't part of the first page load: it's fetched when a room opens (and prefetched once the page is idle). */
+let PeerCtor: typeof Peer | null = null;
+export const loadPeer = () => import("peerjs").then((m) => (PeerCtor = m.default));
+let peerWait = 0;
+/** Show "connecting" while PeerJS arrives, then `start` (unless the player left or started something else meanwhile). */
+function afterPeerLoads(start: () => void) {
+  const ticket = ++peerWait;
+  setRoom({ status: "connecting", error: null });
+  loadPeer().then(
+    () => { if (ticket === peerWait) start(); },
+    () => { if (ticket === peerWait) setRoom({ status: "error", error: netError("load") }); },
+  );
+}
 const guests = new Map<string, Link>(); // host side
 let hostLink: Link | null = null; // guest side
 /** Host side: a player's secret key → their current peer id, so someone who drops can take their seat back. */
@@ -216,11 +231,13 @@ export const onlinePlayers = (s: Snapshot) => s.players.filter((p) => p.online);
 let wantPublic = false;
 
 export function createRoom(name: string, opts: { public?: boolean } = {}, attempt = 0) {
+  const P = PeerCtor;
+  if (!P) return afterPeerLoads(() => createRoom(name, opts, attempt));
   leaveRoom();
   wantPublic = !!opts.public;
   const code = newCode();
   setRoom({ status: "connecting", error: null, isHost: true });
-  const p = new Peer(PEER_PREFIX + code.toLowerCase(), PEER_OPTIONS);
+  const p = new P(PEER_PREFIX + code.toLowerCase(), PEER_OPTIONS);
   peer = p;
   p.on("open", (id) => {
     setRoom({
@@ -245,6 +262,8 @@ export function createRoom(name: string, opts: { public?: boolean } = {}, attemp
  * retrying in the background and take their seats back; whoever already sent a recording sends it again.
  */
 export function resumeRoom(attempt = 0) {
+  const P = PeerCtor;
+  if (!P) return afterPeerLoads(() => resumeRoom(attempt));
   const saved = readJson<Hosted>(HOSTED_STORE);
   if (!saved || saved.v !== 1 || Date.now() - saved.savedAt > RESUME_MS) { forgetLastRoom(); return; }
   if (attempt === 0) {
@@ -253,7 +272,7 @@ export function resumeRoom(attempt = 0) {
     setRoom({ status: "connecting", reconnecting: false, error: null, isHost: true, snap: null });
   }
   const code = saved.snap.code;
-  const p = new Peer(PEER_PREFIX + code.toLowerCase(), PEER_OPTIONS);
+  const p = new P(PEER_PREFIX + code.toLowerCase(), PEER_OPTIONS);
   peer = p;
   p.on("open", async (id) => {
     keys = new Map(saved.keys);
@@ -681,11 +700,12 @@ function beaconInfo(): PublicRoomInfo | null {
 
 /** Claim a free public slot and answer "who's there?" probes with this room's details. */
 function startBeacon() {
-  if (beacon) return;
+  const P = PeerCtor;
+  if (beacon || !P) return;
   const slots = shuffle([...Array(PUBLIC_SLOTS).keys()]);
   const claim = (i: number) => {
     if (i >= slots.length || !useRoom.getState().snap?.public) return;
-    const b = new Peer(PUBLIC_PREFIX + slots[i], PEER_OPTIONS);
+    const b = new P(PUBLIC_PREFIX + slots[i], PEER_OPTIONS);
     beacon = b;
     b.on("error", (e) => {
       if (e.type === "unavailable-id" && beacon === b) { b.destroy(); beacon = null; claim(i + 1); }
@@ -798,10 +818,12 @@ const RECONNECT_MS = 90_000;
 const OPEN_TIMEOUT = 8000;
 
 export function joinRoom(code: string, name: string) {
+  const P = PeerCtor;
+  if (!P) return afterPeerLoads(() => joinRoom(code, name));
   leaveRoom();
   code = normalizeCode(code);
   setRoom({ status: "connecting", error: null, isHost: false });
-  const p = new Peer(PEER_OPTIONS);
+  const p = new P(PEER_OPTIONS);
   peer = p;
   const key = playerKey();
   const timeout = setTimeout(() => {
@@ -1047,6 +1069,7 @@ export function setTakeEffect(roleId: string, effect: EffectId) {
 }
 
 export function leaveRoom() {
+  peerWait++;
   stopBeacon();
   wantPublic = false;
   if (useRoom.getState().status !== "idle") forgetLastRoom();

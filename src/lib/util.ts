@@ -22,6 +22,12 @@ export const fmtTime = (t: number) => {
   return m + ":" + (t % 60).toFixed(1).padStart(4, "0");
 };
 
+/** Run `fn` once the page has nothing better to do (soon after the first screen is up). */
+export const whenIdle = (fn: () => void) => {
+  if ("requestIdleCallback" in window) requestIdleCallback(() => fn(), { timeout: 4000 });
+  else setTimeout(fn, 1500);
+};
+
 export const sleep = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
 
 export const safeFileName = (s: string) => String(s || "").replace(/[\\/:*?"<>|]+/g, "_").slice(0, 60);

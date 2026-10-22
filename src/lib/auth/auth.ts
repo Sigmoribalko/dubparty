@@ -1,6 +1,7 @@
-import { createClient, type AuthError, type Session, type SupabaseClient, type User } from "@supabase/supabase-js";
+import type { AuthError, Session, SupabaseClient, User } from "@supabase/supabase-js";
 import { create } from "zustand";
 import { SUPABASE_ANON_KEY, SUPABASE_URL } from "../../config";
+import { whenIdle } from "../util";
 
 /*
  * Accounts: email + password, confirmed with a one-time code sent by email (Supabase Auth).
@@ -9,10 +10,16 @@ import { SUPABASE_ANON_KEY, SUPABASE_URL } from "../../config";
 
 export const authEnabled = !!SUPABASE_URL && !!SUPABASE_ANON_KEY;
 
-let client: SupabaseClient | null = null;
-function sb(): SupabaseClient {
-  if (!client) client = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, { auth: { persistSession: true, autoRefreshToken: true } });
-  return client;
+/** The Supabase client (~200 KB) loads after the first paint, not with the page. */
+let client: Promise<SupabaseClient> | null = null;
+function sb(): Promise<SupabaseClient> {
+  return (client ??= import("@supabase/supabase-js").then(({ createClient }) =>
+    createClient(SUPABASE_URL, SUPABASE_ANON_KEY, { auth: { persistSession: true, autoRefreshToken: true } })));
+}
+
+/** Where supabase-js keeps the session. No entry = certainly signed out, so the page needn't wait for the client to know it. */
+function hasStoredSession(): boolean {
+  try { return !!localStorage.getItem(`sb-${new URL(SUPABASE_URL).hostname.split(".")[0]}-auth-token`); } catch { return true; }
 }
 
 /** Row of `public.profiles` (see supabase/migrations). */
@@ -33,14 +40,14 @@ interface AuthState {
   profile: Profile | null;
 }
 
-export const useAuth = create<AuthState>(() => ({ ready: !authEnabled, user: null, profile: null }));
+export const useAuth = create<AuthState>(() => ({ ready: !authEnabled || !hasStoredSession(), user: null, profile: null }));
 
 export async function refreshProfile() {
   const user = useAuth.getState().user;
   if (!authEnabled || !user) { useAuth.setState({ profile: null }); return; }
-  let { data, error } = await sb().from("profiles").select("id, name, plan, dubs_used, dubs_limit, wins").eq("id", user.id).maybeSingle();
+  let { data, error } = await sb().then((c) => c.from("profiles").select("id, name, plan, dubs_used, dubs_limit, wins").eq("id", user.id).maybeSingle());
   // Before the "wins" migration has been run, load the rest of the profile anyway.
-  if (error) ({ data } = await sb().from("profiles").select("id, name, plan, dubs_used, dubs_limit").eq("id", user.id).maybeSingle());
+  if (error) ({ data } = await sb().then((c) => c.from("profiles").select("id, name, plan, dubs_used, dubs_limit").eq("id", user.id).maybeSingle()));
   useAuth.setState({ profile: data ? ({ ...data, wins: (data as Partial<Profile>).wins ?? 0 } as Profile) : null });
 }
 
@@ -52,8 +59,13 @@ export function initAuth() {
     useAuth.setState({ ready: true, user });
     if (changed) refreshProfile();
   };
-  sb().auth.getSession().then(({ data }) => apply(data.session));
-  sb().auth.onAuthStateChange((_event, session) => apply(session));
+  const start = () => sb().then((c) => {
+    c.auth.getSession().then(({ data }) => apply(data.session));
+    c.auth.onAuthStateChange((_event, session) => apply(session));
+  }, () => useAuth.setState({ ready: true })); // offline: play as a guest
+  // Signed out (most first visits): the first screen doesn't wait for the client at all.
+  if (useAuth.getState().ready) whenIdle(start);
+  else start();
 }
 
 /** Out of dubs on the current plan? (Guests and accounts without a limit never are.) */
@@ -68,7 +80,7 @@ export function dubLimitReached(): boolean {
  */
 export async function countDub(scene: string): Promise<boolean> {
   if (!authEnabled || !useAuth.getState().user) return true;
-  const { data, error } = await sb().rpc("use_dub", { scene_title: scene });
+  const { data, error } = await sb().then((c) => c.rpc("use_dub", { scene_title: scene }));
   if (error) return true;
   const res = data as { allowed: boolean; used: number; limit: number | null };
   const p = useAuth.getState().profile;
@@ -79,7 +91,7 @@ export async function countDub(scene: string): Promise<boolean> {
 /** Small per-account preferences kept with the account itself (e.g. the player's look), so they follow it to other devices. */
 export async function saveUserData(data: Record<string, unknown>) {
   if (!authEnabled || !useAuth.getState().user) return;
-  const { data: res } = await sb().auth.updateUser({ data });
+  const { data: res } = await sb().then((c) => c.auth.updateUser({ data }));
   if (res.user) useAuth.setState({ user: res.user });
 }
 
@@ -112,49 +124,49 @@ const fail = (e: AuthError | Error | null) => { throw new AuthFailure(codeOf(e),
 
 /** Create the account; Supabase emails a confirmation code. */
 export async function signUp(email: string, password: string, name: string) {
-  const { data, error } = await sb().auth.signUp({ email, password, options: { data: { name } } });
+  const { data, error } = await sb().then((c) => c.auth.signUp({ email, password, options: { data: { name } } }));
   if (error) fail(error);
   // An existing confirmed email comes back without identities (Supabase hides account existence).
   if (data.user && data.user.identities?.length === 0) throw new AuthFailure("user_exists");
 }
 
 export async function confirmSignUp(email: string, code: string) {
-  const { error } = await sb().auth.verifyOtp({ email, token: code, type: "signup" });
+  const { error } = await sb().then((c) => c.auth.verifyOtp({ email, token: code, type: "signup" }));
   if (error) fail(error);
 }
 
 export async function resendSignUpCode(email: string) {
-  const { error } = await sb().auth.resend({ type: "signup", email });
+  const { error } = await sb().then((c) => c.auth.resend({ type: "signup", email }));
   if (error) fail(error);
 }
 
 export async function signIn(email: string, password: string) {
-  const { error } = await sb().auth.signInWithPassword({ email, password });
+  const { error } = await sb().then((c) => c.auth.signInWithPassword({ email, password }));
   if (error) fail(error);
 }
 
 /** Step 1 of a reset: email a recovery code. */
 export async function sendResetCode(email: string) {
-  const { error } = await sb().auth.resetPasswordForEmail(email);
+  const { error } = await sb().then((c) => c.auth.resetPasswordForEmail(email));
   if (error) fail(error);
 }
 
 /** Step 2: the code signs you in, then the new password is saved. */
 export async function resetPassword(email: string, code: string, password: string) {
-  const v = await sb().auth.verifyOtp({ email, token: code, type: "recovery" });
+  const v = await sb().then((c) => c.auth.verifyOtp({ email, token: code, type: "recovery" }));
   if (v.error) fail(v.error);
-  const u = await sb().auth.updateUser({ password });
+  const u = await sb().then((c) => c.auth.updateUser({ password }));
   if (u.error) fail(u.error);
 }
 
 /** Count a "best voice" win for the signed-in player, once per room round. */
 export async function recordWin(roundKey: string) {
   if (!authEnabled || !useAuth.getState().user) return;
-  const { data, error } = await sb().rpc("record_win", { round_key: roundKey });
+  const { data, error } = await sb().then((c) => c.rpc("record_win", { round_key: roundKey }));
   const p = useAuth.getState().profile;
   if (!error && p && typeof data === "number") useAuth.setState({ profile: { ...p, wins: data } });
 }
 
 export async function signOut() {
-  await sb().auth.signOut();
+  await sb().then((c) => c.auth.signOut());
 }
