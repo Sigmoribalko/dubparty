@@ -438,7 +438,6 @@ button.icon-only { width: 36px; height: 36px; padding: 0; }
 
 /* ---------- profile ---------- */
 .profile-head { display: flex; align-items: center; gap: 16px; padding-top: 8px; }
-.profile-avatar { width: 64px; height: 64px; font-size: 1.6rem; background: var(--accent); color: var(--accent-ink); }
 .stat-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
 .stat { display: grid; gap: 4px; padding: 20px; border-radius: var(--r-lg); background: var(--panel); border: 1.5px solid var(--line); }
 .stat-value { font: 900 clamp(2.4rem, 9vw, 3.4rem) var(--font-display); line-height: 1; }
@@ -510,3 +509,66 @@ button.coach-aim { box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 75%, t
   .floater:nth-child(2) { right: 14px; top: 30px; }
   .welcome button.link { min-height: 0; }
 }
+
+/* ---------- avatars and name colours (components/Avatar.tsx, LookEditor.tsx) ---------- */
+.avatar-svg { display: block; flex: none; overflow: visible; }
+.nick { font-weight: 700; overflow-wrap: anywhere; }
+.nick[data-nick="1"] { color: var(--nick-1); }
+.nick[data-nick="2"] { color: var(--nick-2); }
+.nick[data-nick="3"] { color: var(--nick-3); }
+.nick[data-nick="4"] { color: var(--nick-4); }
+.nick[data-nick="5"] { color: var(--nick-5); }
+.nick[data-nick="6"] { color: var(--nick-6); }
+.nick[data-nick="7"] { color: var(--nick-7); }
+.nick[data-nick="8"] { color: var(--nick-8); }
+.nick[data-nick="9"] { --g: linear-gradient(90deg, var(--nick-1), var(--nick-2), var(--nick-3)); }
+.nick[data-nick="10"] { --g: linear-gradient(90deg, var(--nick-4), var(--nick-5), var(--nick-6)); }
+.nick[data-nick="11"] { --g: linear-gradient(90deg, var(--nick-7), var(--nick-8), var(--nick-2)); }
+.nick[data-nick="12"] { --g: linear-gradient(90deg, var(--nick-1), var(--nick-3), var(--nick-4), var(--nick-5), var(--nick-6), var(--nick-7)); }
+.nick[data-nick="9"], .nick[data-nick="10"], .nick[data-nick="11"], .nick[data-nick="12"] {
+  background: var(--g); -webkit-background-clip: text; background-clip: text; color: transparent; -webkit-box-decoration-break: clone; box-decoration-break: clone;
+}
+
+.look-btn { position: relative; padding: 0; border: 0; background: none; border-radius: 50%; min-height: 0 !important; flex: none; }
+.look-btn:hover:not(:disabled) { background: none; transform: scale(1.06); }
+.look-btn-pen {
+  position: absolute; right: -3px; bottom: -3px; width: 18px; height: 18px; border-radius: 50%; display: grid; place-items: center;
+  background: var(--ink); color: var(--bg); border: 2px solid var(--panel);
+}
+.name-field { display: flex; align-items: flex-end; gap: 12px; }
+.name-field .field { flex: 1; min-width: 0; }
+.name-field .look-btn { margin-bottom: 4px; }
+
+.look-preview { display: grid; justify-items: center; gap: 6px; padding: 4px 0 6px; font-size: 1.15rem; text-align: center; }
+.look-part { display: grid; gap: 6px; }
+.look-options { display: flex; flex-wrap: wrap; gap: 6px; }
+.look-option {
+  display: grid; place-items: center; width: 52px; height: 52px; padding: 0; min-height: 0 !important; border-radius: 14px;
+  border: 1.5px solid var(--line); background: var(--bg);
+}
+.look-option[aria-checked="true"] { border-color: var(--ink); box-shadow: 0 0 0 2px var(--ink) inset; background: var(--panel); }
+.look-swatch { width: 30px; height: 30px; border-radius: 50%; }
+.nick-option { font: 700 1.1rem var(--font-display); }
+/* Phones: one scrolling row per part, so the whole sheet (and "Готово") fits on the screen. */
+@media (max-width: 720px) {
+  .look-options { flex-wrap: nowrap; overflow-x: auto; margin: 0 -14px; padding: 2px 14px 4px; scrollbar-width: none; scroll-padding-inline: 14px; }
+  .look-options::-webkit-scrollbar { display: none; }
+  .look-option { flex: none; width: 48px; height: 48px; border-radius: 12px; }
+  .look-option .avatar-svg { width: 38px; height: 38px; }
+  .look-preview .avatar-svg { width: 72px; height: 72px; }
+}
+
+/* Who's talking right now, over the show. */
+.speaker {
+  position: absolute; left: 10px; bottom: 10px; display: flex; align-items: center; gap: 8px; max-width: calc(100% - 20px);
+  padding: 4px 12px 4px 4px; border-radius: 999px; background: rgb(0 0 0 / 0.62); color: #f4f4ef; pointer-events: none;
+  -webkit-backdrop-filter: blur(6px); backdrop-filter: blur(6px); font-size: 0.9rem;
+}
+.speaker .nick { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+/* The video is always dark: name colours use their dark-theme variants here. */
+.speaker { --nick-1: #ff6b52; --nick-2: #ff9d5c; --nick-3: #ffd84d; --nick-4: #c6f135; --nick-5: #4cdbb5; --nick-6: #7aa7ff; --nick-7: #b994ff; --nick-8: #ff8fb1; }
+.speaker .nick:not([data-nick]) { color: #f4f4ef; }
+.take-who { display: flex; align-items: center; gap: 10px; flex: 1; min-width: 0; }
+.take-who h3 { margin: 0; }
+.role-owner { display: inline-flex; align-items: center; gap: 6px; }
+.who-chip { display: inline-flex; align-items: center; gap: 6px; padding-left: 3px; }

@@ -1,6 +1,7 @@
 import { useEffect } from "react";
 import { t } from "../i18n";
 import { decodeBlob } from "../lib/audio/engine";
+import type { Look } from "../lib/look";
 import { store } from "../lib/store";
 import { roundTakes, sendLineTake, useRoom, type Snapshot } from "../net/room";
 import { notify, useApp } from "./app";
@@ -14,9 +15,10 @@ async function buildOnlineGame(snap: Snapshot, myId: string): Promise<Game | nul
   const scene = pack?.scenes.find((s) => s.id === snap.scene!.id);
   if (!pack || !scene) return null;
   const cast: Record<string, string> = {};
-  for (const p of snap.players) if (p.roleId) cast[p.roleId] = p.name;
+  const looks: Record<string, Look> = {};
+  for (const p of snap.players) if (p.roleId) { cast[p.roleId] = p.name; looks[p.roleId] = p.look; }
   const myRoleId = snap.players.find((p) => p.id === myId)?.roleId ?? null;
-  const res = await createGame({ pack, scene, round: snap.round, cast, myRoleId });
+  const res = await createGame({ pack, scene, round: snap.round, cast, looks, myRoleId });
   if (res?.warnings.length) notify(t().game.clipsUnreadable);
   const game = res?.game ?? null;
   // Back in the same round after a closed tab: the lines recorded before are still here.

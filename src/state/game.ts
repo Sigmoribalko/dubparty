@@ -1,6 +1,7 @@
 import { decodeBlob, type DuckRanges, type MixTrack, type VideoDuck } from "../lib/audio/engine";
 import type { EffectId } from "../lib/audio/effects";
 import { store } from "../lib/store";
+import type { Look } from "../lib/look";
 import type { Pack, RecordedTrack, Role, Scene } from "../lib/types";
 
 /**
@@ -17,6 +18,8 @@ export interface Game {
   clips: Record<string, AudioBuffer>;
   /** roleId → player name, for roles somebody took. */
   cast: Record<string, string>;
+  /** roleId → that player's avatar and name colour (online rounds). */
+  looks?: Record<string, Look>;
   /** roleId → recording. */
   tracks: Record<string, RecordedTrack>;
   /** lineId → this device's take of one of its lines, before they're joined and sent. */
@@ -36,6 +39,7 @@ export async function createGame(opts: {
   scene: Scene;
   round: number;
   cast: Record<string, string>;
+  looks?: Record<string, Look>;
   myRoleId: string | null;
 }): Promise<{ game: Game; warnings: string[] } | null> {
   const { scene } = opts;

@@ -10,6 +10,8 @@ import {
 import { playableRoles } from "../state/game";
 import { ask, askLeave } from "../components/Ask";
 import { FileButton } from "../components/FileButton";
+import { Avatar, Nick } from "../components/Avatar";
+import { LookButton } from "../components/LookEditor";
 import { Menu } from "../components/Menu";
 import { Modal } from "../components/Modal";
 import { importFiles } from "../lib/pack/import";
@@ -90,10 +92,13 @@ function Entry({ initialCode, intent, error }: { initialCode?: string; intent?: 
         <p className="muted">{t.online.lead}</p>
       </div>
       {error && <div className="panel notice">{error}</div>}
-      <label className="field">
-        {t.online.yourName}
-        <input value={name} maxLength={30} placeholder={t.online.namePlaceholder} onChange={(e) => setName(e.target.value)} autoFocus={!name} />
-      </label>
+      <div className="name-field">
+        <LookButton name={name} size={44} />
+        <label className="field">
+          {t.online.yourName}
+          <input value={name} maxLength={30} placeholder={t.online.namePlaceholder} onChange={(e) => setName(e.target.value)} autoFocus={!name} />
+        </label>
+      </div>
       <div className={"grid-cards" + (intent === "create" ? " reverse" : "")}>
         <section className="panel stack">
           <div>
@@ -177,10 +182,13 @@ function Finder({ error }: { error: string | null }) {
         <p className="muted">{t.online.findLead}</p>
       </div>
       {error && <div className="panel notice">{error}</div>}
-      <label className="field">
-        {t.online.yourName}
-        <input value={name} maxLength={30} placeholder={t.online.namePlaceholder} onChange={(e) => setName(e.target.value)} autoFocus={!name} />
-      </label>
+      <div className="name-field">
+        <LookButton name={name} size={44} />
+        <label className="field">
+          {t.online.yourName}
+          <input value={name} maxLength={30} placeholder={t.online.namePlaceholder} onChange={(e) => setName(e.target.value)} autoFocus={!name} />
+        </label>
+      </div>
 
       <section className="panel stack" aria-live="polite">
         <div className="row">
@@ -321,7 +329,9 @@ function Casting({ snap }: { snap: Snapshot }) {
               >
                 <span className="role-dot" aria-hidden="true" />
                 <span className="role-name">{r.name}</span>
-                <span className="role-owner">{owner ? (isMine ? `${owner.name} (${t.online.you})` : owner.name) : t.online.free}</span>
+                <span className="role-owner">
+                  {owner ? <><Avatar look={owner.look} size={22} /><Nick name={owner.name} look={owner.look} />{isMine && ` (${t.online.you})`}</> : t.online.free}
+                </span>
               </button>
             );
           })}
@@ -430,9 +440,9 @@ function PlayerRow({ p, snap, me }: { p: Player; snap: Snapshot; me: boolean }) 
   const status = !p.online ? t.online.offline : !p.ready ? (p.progress != null ? t.online.downloading(p.progress) : t.online.waitingScene) : null;
   return (
     <li className={"player" + (p.online ? "" : " off")}>
-      <span className="avatar" aria-hidden="true">{p.name.slice(0, 1).toUpperCase()}</span>
+      {me ? <LookButton name={p.name} /> : <Avatar look={p.look} />}
       <span className="player-name">
-        {p.name}
+        <Nick name={p.name} look={p.look} />
         {(p.host || me) && <small className="muted"> · {[p.host && t.online.host, me && t.online.you].filter(Boolean).join(", ")}</small>}
       </span>
       {status ? <span className="muted fine">{status}</span> : role ? <span className="chip tag" style={{ ["--c" as string]: role.color }}>{role.name}</span> : <span className="muted fine">{t.online.noRole}</span>}
@@ -531,8 +541,8 @@ export function RecordingWait({ snap }: { snap: Snapshot }) {
             const role = snap.scene?.roles.find((r) => r.id === p.roleId);
             return (
               <li className={"player" + (p.online ? "" : " off")} key={p.id}>
-                <span className="avatar" aria-hidden="true">{p.name.slice(0, 1).toUpperCase()}</span>
-                <span className="player-name">{p.name}{p.id === myId && <small className="muted"> · {t.online.you}</small>}</span>
+                <Avatar look={p.look} />
+                <span className="player-name"><Nick name={p.name} look={p.look} />{p.id === myId && <small className="muted"> · {t.online.you}</small>}</span>
                 {role && <span className="chip tag" style={{ ["--c" as string]: role.color }}>{role.name}</span>}
                 <span className={p.submitted ? "ok" : "muted fine"}>
                   {p.submitted ? t.online.sentMark : !p.online ? t.online.offline : t.online.linesLeft(linesOf(p) - p.linesDone)}

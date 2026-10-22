@@ -76,6 +76,13 @@ export async function countDub(scene: string): Promise<boolean> {
   return res.allowed;
 }
 
+/** Small per-account preferences kept with the account itself (e.g. the player's look), so they follow it to other devices. */
+export async function saveUserData(data: Record<string, unknown>) {
+  if (!authEnabled || !useAuth.getState().user) return;
+  const { data: res } = await sb().auth.updateUser({ data });
+  if (res.user) useAuth.setState({ user: res.user });
+}
+
 export const displayName = (u: User | null) => (u?.user_metadata?.name as string | undefined) || u?.email?.split("@")[0] || "";
 
 export type AuthErrorCode = "invalid_credentials" | "email_not_confirmed" | "user_exists" | "weak_password" | "bad_code" | "rate_limit" | "network" | "unknown";

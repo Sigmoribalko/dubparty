@@ -1,7 +1,10 @@
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
+import { Nick } from "../components/Avatar";
+import { LookButton, LookEditor } from "../components/LookEditor";
 import { useT } from "../i18n";
 import { authEnabled, displayName, refreshProfile, signOut, useAuth } from "../lib/auth/auth";
 import { notify, useApp } from "../state/app";
+import { useLook } from "../state/look";
 
 /** Your account and stats: dubs recorded and "best voice" wins. */
 export function Profile() {
@@ -9,6 +12,8 @@ export function Profile() {
   const p = t.profile;
   const go = useApp((s) => s.go);
   const { ready, user, profile } = useAuth();
+  const look = useLook((s) => s.look);
+  const [editing, setEditing] = useState(false);
 
   useEffect(() => { refreshProfile(); }, []);
 
@@ -34,10 +39,11 @@ export function Profile() {
   return (
     <div className="wrap stack profile">
       <header className="profile-head">
-        <span className="avatar profile-avatar" aria-hidden="true">{name.slice(0, 1).toUpperCase()}</span>
-        <div>
-          <h2>{name}</h2>
+        <LookButton name={name} size={72} />
+        <div className="stack" style={{ gap: 4 }}>
+          <h2><Nick name={name} look={look} /></h2>
           <p className="muted">{user.email}</p>
+          <button className="small" style={{ justifySelf: "start" }} onClick={() => setEditing(true)}>{t.look.edit}</button>
         </div>
       </header>
 
@@ -57,6 +63,8 @@ export function Profile() {
         <h3 id="plan-h">{p.plan}</h3>
         <p className="muted">{profile?.plan === "free" || !profile ? p.planFree : profile.plan}{limit == null ? ` · ${p.unlimited}` : ""}</p>
       </section>
+
+      {editing && <LookEditor name={name} onClose={() => setEditing(false)} />}
 
       <button className="ghost danger" style={{ justifySelf: "start" }} onClick={async () => { await signOut(); notify(t.auth.signedOut); go({ name: "home" }); }}>
         {t.auth.signOut}
