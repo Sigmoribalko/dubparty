@@ -135,7 +135,7 @@ export function Screening() {
 
       {!solo && <section className="stack" aria-labelledby="best-h">
         <div className="row">
-          <div style={{ flex: 1 }}>
+          <div style={{ flex: "1 1 240px" }}>
             <h3 id="best-h">{t.screen.bestVoice}</h3>
             <p className="muted fine">{t.screen.afterShowHint}</p>
           </div>

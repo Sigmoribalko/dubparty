@@ -106,7 +106,7 @@ function Entry({ initialCode, intent, error }: { initialCode?: string; intent?: 
             <p className="muted fine">{t.online.joinText}</p>
           </div>
           <form className="row" onSubmit={(e) => { e.preventDefault(); if (normalizeCode(code).length === 5) withName((n) => joinRoom(code, n))(); }}>
-            <input className="code-input" value={code} onChange={(e) => setCode(normalizeCode(e.target.value))} placeholder={t.online.codePlaceholder} aria-label={t.online.joinTitle} autoCapitalize="characters" autoComplete="off" spellCheck={false} />
+            <input className="code-input join-code" value={code} onChange={(e) => setCode(normalizeCode(e.target.value))} placeholder={t.online.codePlaceholder} aria-label={t.online.joinTitle} autoCapitalize="characters" autoComplete="off" spellCheck={false} />
             <button className={code.length === 5 ? "primary" : ""} disabled={code.length !== 5}>{t.online.join}</button>
           </form>
         </section>
@@ -542,11 +542,14 @@ export function RecordingWait({ snap }: { snap: Snapshot }) {
             return (
               <li className={"player" + (p.online ? "" : " off")} key={p.id}>
                 <Avatar look={p.look} />
-                <span className="player-name"><Nick name={p.name} look={p.look} />{p.id === myId && <small className="muted"> · {t.online.you}</small>}</span>
-                {role && <span className="chip tag" style={{ ["--c" as string]: role.color }}>{role.name}</span>}
-                <span className={p.submitted ? "ok" : "muted fine"}>
-                  {p.submitted ? t.online.sentMark : !p.online ? t.online.offline : t.online.linesLeft(linesOf(p) - p.linesDone)}
+                <span className="player-name">
+                  <Nick name={p.name} look={p.look} />{p.id === myId && <small className="muted"> · {t.online.you}</small>}
+                  {/* Under the name, so a phone-width row doesn't break in two. */}
+                  <span className={"player-sub " + (p.submitted ? "ok" : "muted fine")}>
+                    {p.submitted ? t.online.sentMark : !p.online ? t.online.offline : t.online.linesLeft(linesOf(p) - p.linesDone)}
+                  </span>
                 </span>
+                {role && <span className="chip tag" style={{ ["--c" as string]: role.color }}>{role.name}</span>}
                 {isHost && !p.host && <KickMenu p={p} />}
               </li>
             );
