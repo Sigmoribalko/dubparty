@@ -1,23 +1,55 @@
-import { useEffect } from "react";
+import { lazy, Suspense, useEffect, type ComponentType } from "react";
 import { Asker, askLeave } from "./components/Ask";
 import { Icon } from "./components/Icon";
-import { SettingsModal } from "./components/SettingsModal";
 import { Toaster } from "./components/Toast";
 import { UserMenu } from "./components/UserMenu";
 import { useT } from "./i18n";
-import { leaveRoom, useRoom } from "./net/room";
+import { whenIdle } from "./lib/util";
+import { leaveRoom, loadPeer, useRoom } from "./net/room";
 import { useApp, type View } from "./state/app";
 import { hasAnyRecording } from "./state/game";
 import { useRoomDirector } from "./state/online";
 import "./state/theme";
-import { Auth } from "./views/Auth";
-import { Editor } from "./views/Editor";
 import { Home } from "./views/Home";
-import { Online } from "./views/Online";
-import { Packs } from "./views/Packs";
-import { Profile } from "./views/Profile";
-import { Record } from "./views/Record";
-import { Screening } from "./views/Screening";
+
+/*
+ * Only Home is in the first chunk. The other screens are separate files, all fetched once the page is
+ * idle: opening them is then instant, and a tab that's mid-game keeps working when a deploy replaces the files.
+ */
+const chunks = {
+  online: () => import("./views/Online"),
+  record: () => import("./views/Record"),
+  screen: () => import("./views/Screening"),
+  packs: () => import("./views/Packs"),
+  editor: () => import("./views/Editor"),
+  auth: () => import("./views/Auth"),
+  profile: () => import("./views/Profile"),
+  settings: () => import("./components/SettingsModal"),
+};
+
+const RELOADED = "dubl-chunk-reload";
+/** A screen that fails to load (the site was updated since this tab opened): reload once to get the new files. */
+function screen<T, P extends object>(load: () => Promise<T>, pick: (m: T) => ComponentType<P>) {
+  return lazy(() => load().then((m) => ({ default: pick(m) }), (e) => {
+    try {
+      if (Date.now() - Number(sessionStorage.getItem(RELOADED) ?? 0) > 60_000) {
+        sessionStorage.setItem(RELOADED, String(Date.now()));
+        location.reload();
+        return new Promise<never>(() => {});
+      }
+    } catch { /* storage blocked */ }
+    throw e;
+  }));
+}
+
+const Online = screen(chunks.online, (m) => m.Online);
+const Record = screen(chunks.record, (m) => m.Record);
+const Screening = screen(chunks.screen, (m) => m.Screening);
+const Packs = screen(chunks.packs, (m) => m.Packs);
+const Editor = screen(chunks.editor, (m) => m.Editor);
+const Auth = screen(chunks.auth, (m) => m.Auth);
+const Profile = screen(chunks.profile, (m) => m.Profile);
+const SettingsModal = screen(chunks.settings, (m) => m.SettingsModal);
 
 /** Screens where the game is running: navigation stays out of the way. */
 const IN_GAME: View["name"][] = ["record", "screen"];
@@ -31,6 +63,11 @@ export function App() {
   const setSettingsOpen = useApp((s) => s.setSettingsOpen);
   useRoomDirector();
   const reconnecting = useRoom((s) => s.reconnecting);
+
+  useEffect(() => whenIdle(() => {
+    Object.values(chunks).forEach((load) => load().catch(() => {}));
+    loadPeer().catch(() => {});
+  }), []);
 
   // Invite links look like ?room=K7MXQ.
   useEffect(() => {
@@ -80,6 +117,7 @@ export function App() {
       )}
       {/* Keyed by mode too: "Регистрация" in the top bar must switch an open sign-in screen. */}
       <main className="view" key={view.name + ("packId" in view ? view.packId ?? "" : "") + ("mode" in view ? view.mode ?? "" : "")}>
+        <Suspense fallback={<div className="wrap"><div className="spinner" aria-label={t.common.loading} /></div>}>
         {view.name === "home" && <Home />}
         {view.name === "packs" && <Packs />}
         {view.name === "editor" && <Editor packId={view.packId} />}
@@ -88,6 +126,7 @@ export function App() {
         {view.name === "auth" && <Auth mode={view.mode} />}
         {view.name === "profile" && <Profile />}
         {view.name === "online" && <Online code={view.code} packId={view.packId} intent={view.intent} />}
+        </Suspense>
       </main>
 
       {!inGame && (
@@ -104,7 +143,7 @@ export function App() {
         </nav>
       )}
 
-      {settingsOpen && <SettingsModal onClose={() => setSettingsOpen(false)} />}
+      {settingsOpen && <Suspense fallback={null}><SettingsModal onClose={() => setSettingsOpen(false)} /></Suspense>}
       <Toaster />
       <Asker />
     </div>

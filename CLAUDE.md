@@ -4,7 +4,10 @@ Online party game: friends (or random players) dub video scenes together, each o
 Live: https://dubparty.ru (GitHub Pages, repo Sigmoribalko/dubparty). Owner talks in Russian, wants short, practical answers.
 
 ## Stack
-- Vite + React 19 + TypeScript + zustand. `npm run dev` (port 5173), `npm run build` → single-file `dist/index.html` (vite-plugin-singlefile).
+- Vite + React 19 + TypeScript + zustand. `npm run dev` (port 5173), `npm run build` → `dist/index.html` + `dist/assets`.
+  First load is only Home (~110 KB gzip). Other screens are `lazy()` in `App.tsx` and prefetched when idle; Supabase
+  (`sb()` in auth.ts), PeerJS (`loadPeer()` in room.ts) and jszip are dynamic imports. A guest with no stored
+  Supabase session never waits for the Supabase client. Don't add heavy static imports to Home/App/room.ts.
 - Deploy: push to `main` → GitHub Actions `.github/workflows/pages.yml` builds and publishes. If the deploy step fails with
   "No artifacts named github-pages", just `gh run rerun <id>` (transient GitHub issue).
 - Custom domain dubparty.ru (4× A @ → 185.199.108–111.153, CNAME www → sigmoribalko.github.io). `public/CNAME`.

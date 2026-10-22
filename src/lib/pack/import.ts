@@ -1,4 +1,4 @@
-import JSZip from "jszip";
+import type JSZip from "jszip";
 import { t } from "../../i18n";
 import { findSpeech } from "../audio/speech";
 import { store } from "../store";
@@ -27,7 +27,8 @@ async function entriesFrom(files: File[]): Promise<Entry[]> {
     const e = extOf(p);
     if (e === "zip" || e === "dubpack") {
       let zip: JSZip;
-      try { zip = await JSZip.loadAsync(f); } catch { throw new ImportError("zip"); }
+      // jszip loads only when a ZIP is actually opened.
+      try { zip = await (await import("jszip")).default.loadAsync(f); } catch { throw new ImportError("zip"); }
       const root = stemOf(f.name);
       zip.forEach((rp, zf) => {
         if (zf.dir) return;

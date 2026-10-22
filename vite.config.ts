@@ -1,11 +1,10 @@
 import { defineConfig, type Plugin } from "vite";
 import react from "@vitejs/plugin-react";
-import { viteSingleFile } from "vite-plugin-singlefile";
 
 /*
  * Content-Security-Policy for the built page. GitHub Pages can't send headers, so it goes in a
- * <meta>. Runs after the single-file inlining so it can hash the one inline app script: any
- * script injected later (XSS) has no matching hash and the browser refuses to run it.
+ * <meta>. The app's scripts are our own files ('self'); any inline script in the page gets its hash,
+ * so a script injected later (XSS) has no match and the browser refuses to run it.
  */
 function csp(): Plugin {
   let supabase = "";
@@ -27,8 +26,8 @@ function csp(): Plugin {
       const hashes = await Promise.all(scripts.map(async (m) => `'sha256-${await sha256(m[1])}'`));
       const policy = [
         "default-src 'self'",
-        // Scripts: our own files (AI worker, pitch-shift worklet) and the hashed app script. No blob:, no other host.
-        `script-src 'self' ${hashes.join(" ")}`,
+        // Scripts: our own files (app chunks, AI worker, pitch-shift worklet). No blob:, no other host.
+        `script-src ${["'self'", ...hashes].join(" ")}`,
         "worker-src 'self'",
         "style-src 'self' 'unsafe-inline'",
         "font-src 'self'",
@@ -54,11 +53,11 @@ function csp(): Plugin {
   };
 }
 
-// `npm run build` produces dist/index.html with the app inlined, plus the site's own files from public/
-// (fonts, the pitch-shift worklet, AI worker and models).
+// `npm run build` produces dist/index.html, the app in dist/assets (a small first chunk; screens, accounts,
+// networking and pack import load after the first paint), plus public/ (fonts, worklet, AI worker and models).
 export default defineConfig({
-  plugins: [react(), viteSingleFile(), csp()],
+  plugins: [react(), csp()],
   // Same runtime as the separate AI build (vite.ai.config.ts), for development where src/ai is imported directly.
   resolve: { alias: { "onnxruntime-web/webgpu": "/node_modules/onnxruntime-web/dist/ort.wasm.min.mjs" } },
-  build: { target: "es2022", assetsInlineLimit: Infinity },
+  build: { target: "es2022" },
 });

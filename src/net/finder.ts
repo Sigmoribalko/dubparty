@@ -1,6 +1,6 @@
-import Peer from "peerjs";
+import type Peer from "peerjs";
 import { cleanText } from "../lib/util";
-import { normalizeCode, PUBLIC_PREFIX, PUBLIC_SLOTS, type PublicRoomInfo } from "./room";
+import { loadPeer, normalizeCode, PUBLIC_PREFIX, PUBLIC_SLOTS, type PublicRoomInfo } from "./room";
 
 /*
  * Finding public rooms without a server of our own: every open room claims one of
@@ -35,20 +35,14 @@ export const joinable = (r: FoundRoom) => (r.phase === "lobby" || r.phase === "c
 /** Probe all public slots. Calls `onFound` as rooms answer; resolves when the sweep is done. */
 export function findRooms(onFound: (room: FoundRoom) => void): { done: Promise<void>; cancel(): void } {
   let cancelled = false;
-  const peer = new Peer({ debug: 0 });
+  let peer: Peer | null = null;
   const pending = new Map<string, () => void>();
 
-  // Errors for unknown ids arrive on the Peer, not the connection: settle that probe.
-  peer.on("error", (e) => {
-    const id = /(dubbo-v1-pub-\d+)/.exec(String(e.message))?.[1];
-    if (id) pending.get(id)?.();
-  });
-
-  const probe = (slot: number) =>
+  const probe = (p: Peer, slot: number) =>
     new Promise<void>((resolve) => {
       const id = PUBLIC_PREFIX + slot;
       let settled = false;
-      const conn = peer.connect(id, { serialization: "raw", reliable: true });
+      const conn = p.connect(id, { serialization: "raw", reliable: true });
       const finish = () => {
         if (settled) return;
         settled = true;
@@ -71,22 +65,30 @@ export function findRooms(onFound: (room: FoundRoom) => void): { done: Promise<v
     });
 
   const done = (async () => {
+    const P = await loadPeer();
+    if (cancelled) return;
+    const p = (peer = new P({ debug: 0 }));
+    // Errors for unknown ids arrive on the Peer, not the connection: settle that probe.
+    p.on("error", (e) => {
+      const id = /(dubbo-v1-pub-\d+)/.exec(String(e.message))?.[1];
+      if (id) pending.get(id)?.();
+    });
     await new Promise<void>((res, rej) => {
-      peer.on("open", () => res());
-      peer.on("error", (e) => { if (e.type !== "peer-unavailable") rej(e); });
+      p.on("open", () => res());
+      p.on("error", (e) => { if (e.type !== "peer-unavailable") rej(e); });
     });
     const slots = [...Array(PUBLIC_SLOTS).keys()];
     for (let i = 0; i < slots.length && !cancelled; i += BATCH) {
-      await Promise.all(slots.slice(i, i + BATCH).map(probe));
+      await Promise.all(slots.slice(i, i + BATCH).map((slot) => probe(p, slot)));
     }
-  })().finally(() => { setTimeout(() => peer.destroy(), 200); });
+  })().finally(() => { setTimeout(() => peer?.destroy(), 200); });
 
   return {
     done,
     cancel() {
       cancelled = true;
       pending.forEach((f) => f());
-      peer.destroy();
+      peer?.destroy();
     },
   };
 }

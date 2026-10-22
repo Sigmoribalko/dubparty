@@ -1,4 +1,3 @@
-import JSZip from "jszip";
 import { saveFile } from "../download";
 import { store } from "../store";
 import type { Pack } from "../types";
@@ -8,6 +7,7 @@ const clipExt = (type: string) => (type.includes("mpeg") ? "mp3" : type.includes
 
 /** Bundle a pack (media + pack.json) into a ZIP that `importFiles` can read back. */
 export async function exportPack(p: Pack) {
+  const { default: JSZip } = await import("jszip");
   const zip = new JSZip();
   const scenes = [];
   for (const s of p.scenes) {
