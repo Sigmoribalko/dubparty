@@ -2,6 +2,8 @@ import { useEffect, useRef, useState } from "react";
 import { useT } from "../i18n";
 import { displayName, signOut, useAuth } from "../lib/auth/auth";
 import { notify, useApp } from "../state/app";
+import { useLook } from "../state/look";
+import { Avatar } from "./Avatar";
 
 /** "Sign in" / "Sign up", or the signed-in user's name with a small menu. */
 export function UserMenu() {
@@ -9,6 +11,7 @@ export function UserMenu() {
   const go = useApp((s) => s.go);
   const { ready, user, profile } = useAuth();
   const [open, setOpen] = useState(false);
+  const look = useLook((s) => s.look);
   const box = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -32,7 +35,7 @@ export function UserMenu() {
   return (
     <div className="user-menu" ref={box}>
       <button className="small ghost user-btn" aria-haspopup="menu" aria-expanded={open} onClick={() => setOpen((o) => !o)}>
-        <span className="avatar" aria-hidden="true">{name.slice(0, 1).toUpperCase()}</span>
+        <Avatar look={look} size={28} />
         <span className="user-name">{name}</span>
       </button>
       {open && (

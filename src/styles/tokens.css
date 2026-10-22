@@ -12,6 +12,16 @@
   --film-ink: #f4f4ef;
   --on-color: #161614;
 
+  /* Name colours players pick (lib/look.ts): darker on light backgrounds, lighter on dark. */
+  --nick-1: #c42e17;
+  --nick-2: #b45309;
+  --nick-3: #8a6a00;
+  --nick-4: #4a7a00;
+  --nick-5: #0a7d68;
+  --nick-6: #2456d6;
+  --nick-7: #7a3fd6;
+  --nick-8: #c02a66;
+
   --r-sm: 8px;
   --r-lg: 18px;
   --font-body: Manrope, system-ui, -apple-system, "Segoe UI", sans-serif;
@@ -33,6 +43,14 @@
     --accent-ink: #141412;
     --focus: #c6f135;
     --film: #0b0b0a;
+    --nick-1: #ff6b52;
+    --nick-2: #ff9d5c;
+    --nick-3: #ffd84d;
+    --nick-4: #c6f135;
+    --nick-5: #4cdbb5;
+    --nick-6: #7aa7ff;
+    --nick-7: #b994ff;
+    --nick-8: #ff8fb1;
   }
 }
 
@@ -46,4 +64,12 @@
   --accent-ink: #141412;
   --focus: #c6f135;
   --film: #0b0b0a;
+  --nick-1: #ff6b52;
+  --nick-2: #ff9d5c;
+  --nick-3: #ffd84d;
+  --nick-4: #c6f135;
+  --nick-5: #4cdbb5;
+  --nick-6: #7aa7ff;
+  --nick-7: #b994ff;
+  --nick-8: #ff8fb1;
 }

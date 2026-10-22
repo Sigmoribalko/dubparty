@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { Avatar } from "../components/Avatar";
 import { beep } from "../components/confetti";
 import { EffectPicker } from "../components/EffectPicker";
 import { MicMeter } from "../components/MicMeter";
@@ -17,6 +18,7 @@ import { countDub, dubLimitReached } from "../lib/auth/auth";
 import { reportLines, sendLineEffect, sendLineTake, submitTake, useRoom } from "../net/room";
 import { notify, useApp, useGame } from "../state/app";
 import { effectOf, mixFor, myLines, originalDuck, originalMix, videoDuck } from "../state/game";
+import { myLook } from "../state/look";
 import { keepEffect, keepLineTake, type TakeContext } from "../state/takes";
 import { Caption } from "./Caption";
 import { RecordingWait } from "./Online";
@@ -324,6 +326,7 @@ export function Record() {
   if (snap && snap.players.find((p) => p.id === myId)?.submitted) return <RecordingWait snap={snap} />;
 
   const myName = game.cast[roleId];
+  const ownLook = myLook();
   const playingWhat = phase === "listen" ? listening : null;
   // Tutorial: one hint at a time, and the button it's about is highlighted.
   const seen = line ? heard[line.id] ?? {} : {};
@@ -334,7 +337,7 @@ export function Record() {
     <div className="wrap stack">
       <div className="row">
         <h2 style={{ flex: 1 }}>{lines.length ? t.record.lineOf(idx + 1, lines.length) : role?.name}</h2>
-        {role && <span className="chip tag" style={{ ["--c" as string]: role.color }}>{myName ? `${myName} · ${role.name}` : role.name}</span>}
+        {role && <span className="chip tag who-chip" style={{ ["--c" as string]: role.color }}><Avatar look={ownLook} size={20} />{myName ? `${myName} · ${role.name}` : role.name}</span>}
       </div>
       {lines.length > 1 && (
         <div className="chips" aria-hidden="true">

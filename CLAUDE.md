@@ -65,6 +65,11 @@ recording line by line ("Реплика N из M": listen original, record, list
   their lines, or full mute when the pack has a backing track).
 - `src/views/` — Home (two cards), Packs, Editor, Online (entry/finder/lobby), Record (voice-track lanes), Screening (votes),
   Auth (email + password + emailed code), Profile (dubs count, best-voice wins).
+- Avatars: `src/lib/look.ts` (a look = 5 indices: body colour, eyes, mouth, hat, name colour), drawn as SVG in
+  `components/Avatar.tsx` (`Avatar`, `Nick`), edited in `components/LookEditor.tsx`. Own look in `state/look.ts`
+  (localStorage `dubl-look`, random on first visit; signed in → account `user_metadata.look`). Sent in `hello` and
+  `{t:"look"}`, kept on `Player.look`; peers' looks go through `lookOf()`. Name colours are theme tokens `--nick-1..8`.
+  Shown in lobby/casting/waiting rows, the record chip, Screening cards and the "who's speaking" tag over the show.
 - `src/i18n/{ru,en}.ts` — every UI string. Russian is the default language.
 - Packs and media live in the browser (IndexedDB, `src/lib/store.ts`); only the room host needs the pack.
 

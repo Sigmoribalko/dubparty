@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { askLeave } from "../components/Ask";
+import { Avatar, Nick } from "../components/Avatar";
 import { Band } from "../components/Band";
 import { confetti } from "../components/confetti";
 import { Modal } from "../components/Modal";
@@ -12,8 +13,10 @@ import { canExportVideo, exportVideo, type VideoExportJob } from "../lib/audio/e
 import { fmtTime, prefersReducedMotion, safeFileName } from "../lib/util";
 import { hostPlayAll, hostReveal, hostToLobby, leaveRoom, onPlayAll, useRoom, vote, voteCounts } from "../net/room";
 import { recordWin } from "../lib/auth/auth";
+import { lookFromName, type Look } from "../lib/look";
+import { useLook } from "../state/look";
 import { notify, useApp, useGame } from "../state/app";
-import { castRoles, originalDuck, effectOf, mixFor, originalMix, videoDuck } from "../state/game";
+import { castRoles, originalDuck, effectOf, mixFor, originalMix, videoDuck, type Game } from "../state/game";
 import { saveOnboarding } from "../state/tutorial";
 
 type OnScreen = "dub" | "original" | null;
@@ -35,6 +38,10 @@ export function Screening() {
   const winners = snap?.winners ?? null;
   const counts = snap ? voteCounts(snap) : {};
   const myVote = snap?.votes[myId];
+  const ownLook = useLook((s) => s.look);
+  /** Live from the room (someone may change it mid-show), else as the round started. */
+  const lookFor = (roleId: string): Look =>
+    roleId === game.myRoleId ? ownLook : snap?.players.find((p) => p.roleId === roleId)?.look ?? game.looks?.[roleId] ?? lookFromName(game.cast[roleId] ?? "");
   /** The tutorial's result: no room, nobody to vote, just "that's how it works" and the way on. */
   const solo = !!game.solo;
   useEffect(() => { if (solo) saveOnboarding({ tutorial: "done" }); }, [solo]);
@@ -98,6 +105,7 @@ export function Screening() {
       <h2>{t.screen.title}</h2>
       <div className="stage">
         <video ref={video} src={game.videoUrl} playsInline preload="auto" onError={() => setVideoError(true)} onClick={() => toggle(video.current)} />
+        {onScreen === "dub" && <Speaker game={game} video={video} lookFor={lookFor} />}
       </div>
       <PlayerBar video={video} />
       <div className="caption">
@@ -141,8 +149,11 @@ export function Screening() {
           return (
             <div className={"take" + (win ? " winner" : "")} key={role.id}>
               <div className="row">
+                <div className="take-who">
+                  <Avatar look={lookFor(role.id)} size={40} />
+                  <h3>{win && <span className="win-badge">{t.screen.winner}</span>}<Nick name={game.cast[role.id]} look={lookFor(role.id)} />{mine ? <small className="muted"> · {t.online.you}</small> : null}</h3>
+                </div>
                 <span className="chip tag" style={{ ["--c" as string]: role.color }}>{role.name}</span>
-                <h3 style={{ flex: 1 }}>{win && <span className="win-badge">{t.screen.winner}</span>}{game.cast[role.id]}{mine ? <small className="muted"> · {t.online.you}</small> : null}</h3>
                 {effect !== "none" && <span className="muted fine">{t.effects[effect][0]}</span>}
               </div>
               <div className="row">
@@ -182,6 +193,27 @@ export function Screening() {
         />
       )}
       {videoError && <VideoErrorModal onClose={() => setVideoError(false)} />}
+    </div>
+  );
+}
+
+/** Over the show: the avatar and name of whoever's line is playing now. */
+function Speaker({ game, video, lookFor }: { game: Game; video: React.RefObject<HTMLVideoElement | null>; lookFor(roleId: string): Look }) {
+  const t = useT();
+  const [roleId, setRoleId] = useState<string | null>(null);
+  useAnimationFrame(() => {
+    const v = video.current;
+    const now = v?.currentTime ?? -1;
+    const line = game.scene.lines.find((l) => now >= l.start && now < l.end && game.tracks[l.roleId] && game.cast[l.roleId]);
+    const id = line?.roleId ?? null;
+    if (id !== roleId) setRoleId(id);
+  });
+  if (!roleId) return null;
+  const look = lookFor(roleId);
+  return (
+    <div className="speaker" key={roleId} aria-label={`${t.look.speaking}: ${game.cast[roleId]}`}>
+      <Avatar look={look} size={28} />
+      <Nick name={game.cast[roleId]} look={look} />
     </div>
   );
 }

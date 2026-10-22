@@ -8,6 +8,8 @@ import { sceneMediaKeys, store } from "../lib/store";
 import { playableRoles } from "../state/game";
 import type { Pack, RecordedTrack, Scene } from "../lib/types";
 import { cleanText, uid } from "../lib/util";
+import { lookOf, type Look } from "../lib/look";
+import { myLook, useLook } from "../state/look";
 import { Link, type FileMeta, type Json } from "./link";
 
 /*
@@ -24,6 +26,8 @@ export type Phase = "lobby" | "casting" | "recording" | "screening";
 export interface Player {
   id: string;
   name: string;
+  /** Avatar and name colour the player picked. */
+  look: Look;
   host: boolean;
   roleId: string | null;
   /** Has the current scene's media locally. */
@@ -178,6 +182,14 @@ function bumpTakes() {
   useRoom.setState((s) => ({ takesRev: s.takesRev + 1 }));
 }
 
+// A new look shows up for everyone in the room right away.
+useLook.subscribe(({ look }, prev) => {
+  if (look === prev.look || !isOnline()) return;
+  const st = useRoom.getState();
+  if (st.isHost) hostUpdate((s) => { const p = s.players.find((x) => x.id === st.myId); if (p) p.look = look; });
+  else hostLink?.send({ t: "look", look: { ...look } });
+});
+
 /* =====================================================================
  * Host
  * ===================================================================== */
@@ -216,7 +228,7 @@ export function createRoom(name: string, opts: { public?: boolean } = {}, attemp
       myId: id,
       snap: {
         code, phase: "lobby", round: 0, pack: null, scene: null, votes: {}, winners: null, public: false,
-        players: [{ id, name, host: true, roleId: null, ready: true, progress: null, submitted: false, linesDone: 0, online: true }],
+        players: [{ id, name, look: myLook(), host: true, roleId: null, ready: true, progress: null, submitted: false, linesDone: 0, online: true }],
       },
     });
   });
@@ -254,8 +266,10 @@ export function resumeRoom(attempt = 0) {
     const blob = own && own.round === snap.round ? await store.getMedia(HOST_TAKE) : null;
     if (own && blob) roundTakes.set(own.roleId, { roleId: own.roleId, blob, offset: own.offset, effect: own.effect });
     snap.players.forEach((pl) => {
+      pl.look = lookOf(pl.look, pl.name);
       if (pl.host) {
         pl.online = true;
+        pl.look = myLook();
         // The host's unsent lines were in the closed tab.
         if (!blob && snap.phase === "recording") { pl.submitted = false; pl.linesDone = 0; }
       } else pl.online = false;
@@ -328,6 +342,7 @@ function hostHandle(link: Link, msg: Json) {
       // Never let a second tab of the same browser steal a seat that's still in use.
       if (back || !prevId || !cur.players.some((p) => p.id === prevId && p.online)) keys.set(key, id);
       const name = cleanText(msg.name, 30) || t().online.guest;
+      const look = lookOf(msg.look, name);
       hostUpdate((s) => {
         if (back) {
           const p = s.players.find((x) => x.id === back.id);
@@ -335,8 +350,8 @@ function hostHandle(link: Link, msg: Json) {
           if (s.votes[back.id] !== undefined) { s.votes[id] = s.votes[back.id]; delete s.votes[back.id]; }
         }
         const existing = s.players.find((p) => p.id === id);
-        if (existing) { existing.name = name; existing.online = true; }
-        else s.players.push({ id, name, host: false, roleId: null, ready: !s.scene, progress: null, submitted: false, linesDone: 0, online: true });
+        if (existing) { existing.name = name; existing.look = look; existing.online = true; }
+        else s.players.push({ id, name, look, host: false, roleId: null, ready: !s.scene, progress: null, submitted: false, linesDone: 0, online: true });
         // A newcomer takes a free seat; nobody else's role changes (no reshuffling by joining and leaving).
         if (s.public && s.phase === "casting") fillFreeRoles(s);
       });
@@ -579,6 +594,9 @@ function applyAction(playerId: string, msg: Json) {
         else s.votes[playerId] = roleId;
       });
       break;
+    case "look":
+      hostUpdate((s) => { const p = s.players.find((x) => x.id === playerId); if (p) p.look = lookOf(msg.look, p.name); });
+      break;
     case "lines":
       hostUpdate((s) => {
         const p = s.players.find((x) => x.id === playerId);
@@ -819,7 +837,7 @@ export function joinRoom(code: string, name: string) {
     const link = new Link(conn);
     hostLink = link;
     const openTimer = setTimeout(() => { if (hostLink === link && !conn.open) lostHost(); }, OPEN_TIMEOUT);
-    conn.on("open", () => { clearTimeout(openTimer); link.send({ t: "hello", name, key }); });
+    conn.on("open", () => { clearTimeout(openTimer); link.send({ t: "hello", name, key, look: myLook() }); });
     link.onMessage = (msg) => { clearTimeout(timeout); guestHandle(msg); };
     // From the host: only the scene files this guest asked for, or a recording of the round.
     link.acceptFile = (meta, size) => (meta.kind === "media" ? !!download?.waiting.has(String(meta.key)) : meta.kind === "take" && size <= MAX_TAKE);
@@ -916,6 +934,7 @@ function cleanSnapshot(v: unknown): Snapshot | null {
     players: s.players.slice(0, 64).filter((p) => p && typeof p === "object").map((p) => ({
       id: str(p.id, 64),
       name: cleanText(p.name, 30),
+      look: lookOf(p.look, cleanText(p.name, 30)),
       host: !!p.host,
       roleId: p.roleId == null ? null : str(p.roleId, 64),
       ready: !!p.ready,
